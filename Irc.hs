@@ -1,9 +1,12 @@
+{-# LANGUAGE OverloadedStrings #-}
 import Network
 import System.IO
 import Data.Maybe
 import Data.Char
 import Data.IORef
 import Messages
+import qualified Data.ByteString.Char8 as B
+
 
 -- TODO: Add a module ... (..) where
 data IrcServer = IrcServer
@@ -55,28 +58,29 @@ connect server = do
   readIORef cServ -- Return the IrcServer
   where cServIO = newIORef server -- We need this to edit the server
   
-disconnect :: IrcServer -> String -> IO IrcServer
+disconnect :: IrcServer -> B.ByteString -> IO IrcServer
 disconnect server quitMsg = do
-  write h $ "QUIT :" ++ quitMsg
+  write h $ "QUIT :" `B.append` quitMsg
   return server
   where h = fromJust $ sSock server
 
 greetServer :: IrcServer -> IO IrcServer
 greetServer server = do
-  write h $ "NICK " ++ nick
-  write h $ "USER " ++ user ++ " " ++ user ++ " " ++ addr ++ " :" ++ real
+  write h $ "NICK " `B.append` nick
+  write h $ "USER " `B.append` user `B.append` " " `B.append`
+      user `B.append` " " `B.append` addr `B.append` " :" `B.append` real
   
   return server
-  where nick = sNickname server
-        user = sUsername server
-        real = sRealname server
-        addr = sAddr server
+  where nick = B.pack $ sNickname server
+        user = B.pack $ sUsername server
+        real = B.pack $ sRealname server
+        addr = B.pack $ sAddr server
         h    = fromJust $ sSock server
 
 listenLoop :: IrcServer -> IO IrcServer
 listenLoop server = do
-  line <- hGetLine h
-  putStrLn $ ">> " ++ line
+  line <- B.hGetLine h
+  B.putStrLn $ (B.pack ">> ") `B.append` line
   
   callEvents server (parse line)
   
@@ -87,7 +91,7 @@ listenLoop server = do
 joinChans :: EventFunc
 joinChans server msg = do
   if code == "001"
-    then do mapM (\chan -> write h $ "JOIN " ++ chan) (sChannels server)
+    then do mapM (\chan -> write h $ "JOIN " `B.append` (B.pack chan)) (sChannels server)
             return ()
     else return ()
   where h    = fromJust $ sSock server
@@ -96,7 +100,7 @@ joinChans server msg = do
 pong :: EventFunc
 pong server msg = do
   putStrLn "In pong function"
-  write h $ "PONG :" ++ pingMsg
+  write h $ "PONG :" `B.append` pingMsg
   where h       = fromJust $ sSock server
         pingMsg = fromJust $ mMsg msg
         code    = fromJust $ mCode msg
@@ -105,8 +109,8 @@ privmsgTest :: EventFunc
 privmsgTest server msg = do
   putStrLn $ show $ privmsg
   putStrLn $ show $ privmsg == "|test"
-  if privmsg == "|test"
-    then write h $ "PRIVMSG " ++ chan ++ " :Works!"
+  if privmsg == "|test" || privmsg == "$kill"
+    then write h $ "PRIVMSG " `B.append` chan `B.append` " :Works!"
     else return ()
   where privmsg = fromJust $ mMsg msg
         chan    = fromJust $ mChan msg
@@ -115,7 +119,7 @@ privmsgTest server msg = do
 -- TODO: Spread this function out.
 callEvents :: IrcServer -> IrcMessage -> IO IrcServer
 callEvents server msg
-  | fromJust (mCode msg) == "PRIVMSG"   = do
+  | fromJust (mCode msg) == "PRIVMSG"     = do
     let eventCall = (\(Privmsg f) -> f server msg)
     let comp      = (\a -> a == (Privmsg undefined))
     let events = filter comp (sEvents server)
@@ -123,7 +127,7 @@ callEvents server msg
     putStrLn "Called PRIVMSG"
     return server
     
-  | fromJust (mCode msg) == "PING"      = do
+  | fromJust (mCode msg) == "PING"        = do
     let eventCall = (\(Ping f) -> f server msg)
     let comp      = (\a -> a == (Ping undefined))
     let events = filter comp (sEvents server)
@@ -131,7 +135,7 @@ callEvents server msg
     putStrLn "Called PING"
     return server
 
-  | all isNumber (fromJust $ mCode msg) = do
+  | B.all isNumber (fromJust $ mCode msg) = do
     let eventCall = (\(Numeric f) -> f server msg)
     let comp      = (\a -> a == (Numeric undefined))
     let events = filter comp (sEvents server)
@@ -150,7 +154,7 @@ modifyIORefIO ref f = do
   ret <- f obj
   writeIORef ref ret
 
-write :: Handle -> String -> IO ()
+write :: Handle -> B.ByteString -> IO ()
 write h msg = do
-  putStrLn $ "<< " ++ msg ++ "\\r\\n"
-  hPutStr h (msg ++ "\r\n")
+  B.putStrLn $ "<< " `B.append` msg `B.append` "\\r\\n"
+  B.hPutStr h (msg `B.append` "\r\n")
