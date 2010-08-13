@@ -3,7 +3,9 @@ import System.IO
 import Data.Maybe
 import Data.Char
 import Data.IORef
+import Messages
 
+-- TODO: Add a module ... (..) where
 data IrcServer = IrcServer
   { sAddr     :: String
   , sPort     :: Int
@@ -15,10 +17,11 @@ data IrcServer = IrcServer
   , sSock     :: Maybe Handle
   } deriving Show
 
-type EventFunc = (IrcServer -> String -> IO IrcServer)
+type EventFunc = (IrcServer -> IrcMessage -> IO ())
 
 data IrcEvent = Privmsg EventFunc
   | Numeric EventFunc
+  | Ping EventFunc
   
 instance Show IrcEvent where
   show (Privmsg _) = "IrcEvent - Privmsg"
@@ -29,7 +32,7 @@ instance Eq IrcEvent where
   (Numeric _) == (Numeric _) = True
   _ == _                     = False
 
--- let serv = IrcServer "irc.freenode.net" 6667 "haskellTestBot" "test" "test 1" ["#()"] [] Nothing
+-- let serv = IrcServer "irc.freenode.net" 6667 "haskellTestBot" "test" "test 1" ["#()", "##XAMPP"] [] Nothing
 
 connect :: IrcServer -> IO IrcServer
 connect server = do
@@ -40,6 +43,8 @@ connect server = do
   
   -- Add internal events
   modifyIORef cServ (flip addEvent (Numeric joinChans))
+  modifyIORef cServ (flip addEvent (Ping pong))
+  modifyIORef cServ (flip addEvent (Privmsg privmsgTest))
   
   -- Initialize connection with the server
   modifyIORefIO cServ greetServer
@@ -73,7 +78,7 @@ listenLoop server = do
   line <- hGetLine h
   putStrLn $ ">> " ++ line
   
-  callEvents server line (words line)
+  callEvents server (parse line)
   
   listenLoop server
   where h = fromJust $ sSock server
@@ -83,28 +88,57 @@ joinChans :: EventFunc
 joinChans server msg = do
   if code == "001"
     then do mapM (\chan -> write h $ "JOIN " ++ chan) (sChannels server)
-            return server
-    else return server
+            return ()
+    else return ()
   where h    = fromJust $ sSock server
-        code = words msg !! 1
+        code = (fromJust $ mCode msg)
 
-callEvents :: IrcServer -> String -> [String] -> IO IrcServer
-callEvents server msg (_:code:_)
-  | code == "PRIVMSG" = do
+pong :: EventFunc
+pong server msg = do
+  putStrLn "In pong function"
+  write h $ "PONG :" ++ pingMsg
+  where h       = fromJust $ sSock server
+        pingMsg = fromJust $ mMsg msg
+        code    = fromJust $ mCode msg
+
+privmsgTest :: EventFunc
+privmsgTest server msg = do
+  putStrLn $ show $ privmsg
+  putStrLn $ show $ privmsg == "|test"
+  if privmsg == "|test"
+    then write h $ "PRIVMSG " ++ chan ++ " :Works!"
+    else return ()
+  where privmsg = fromJust $ mMsg msg
+        chan    = fromJust $ mChan msg
+        h       = fromJust $ sSock server
+
+-- TODO: Spread this function out.
+callEvents :: IrcServer -> IrcMessage -> IO IrcServer
+callEvents server msg
+  | fromJust (mCode msg) == "PRIVMSG"   = do
     let eventCall = (\(Privmsg f) -> f server msg)
     let comp      = (\a -> a == (Privmsg undefined))
     let events = filter comp (sEvents server)
     mapM eventCall events
+    putStrLn "Called PRIVMSG"
+    return server
+    
+  | fromJust (mCode msg) == "PING"      = do
+    let eventCall = (\(Ping f) -> f server msg)
+    let comp      = (\a -> a == (Ping undefined))
+    let events = filter comp (sEvents server)
+    mapM eventCall events
+    putStrLn "Called PING"
     return server
 
-  | all isNumber code     = do
+  | all isNumber (fromJust $ mCode msg) = do
     let eventCall = (\(Numeric f) -> f server msg)
     let comp      = (\a -> a == (Numeric undefined))
     let events = filter comp (sEvents server)
     mapM eventCall events
     return server
   
-  | otherwise         = do return server
+  | otherwise                = do return server
 
 addEvent :: IrcServer -> IrcEvent -> IrcServer
 addEvent server event = server { sEvents = event:(sEvents server) }
