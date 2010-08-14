@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+module Irc (IrcServer(..), IrcEvent, connect, disconnect, addEvent) where
 import Network
 import System.IO
 import Data.Maybe
@@ -7,8 +8,7 @@ import Data.IORef
 import Messages
 import qualified Data.ByteString.Char8 as B
 
-
--- TODO: Add a module ... (..) where
+-- TODO: Get rid of the debug putStrLn's
 data IrcServer = IrcServer
   { sAddr     :: String
   , sPort     :: Int
@@ -22,6 +22,7 @@ data IrcServer = IrcServer
 
 type EventFunc = (IrcServer -> IrcMessage -> IO ())
 
+-- When adding events here, remember add them in callEvents and in eventFunc
 data IrcEvent = Privmsg EventFunc
   | Numeric EventFunc
   | Ping EventFunc
@@ -116,33 +117,37 @@ privmsgTest server msg = do
         chan    = fromJust $ mChan msg
         h       = fromJust $ sSock server
 
--- TODO: Spread this function out.
+events :: IrcServer -> IrcEvent -> IrcMessage -> IO IrcServer
+events server event msg = do
+  mapM eventCall events
+  return server
+  where comp   = (\a -> a == event)
+        events = filter comp (sEvents server)
+        eventCall = (\obj -> (eventFunc obj) server msg)
+
 callEvents :: IrcServer -> IrcMessage -> IO IrcServer
 callEvents server msg
   | fromJust (mCode msg) == "PRIVMSG"     = do
-    let eventCall = (\(Privmsg f) -> f server msg)
-    let comp      = (\a -> a == (Privmsg undefined))
-    let events = filter comp (sEvents server)
-    mapM eventCall events
+    events server (Privmsg undefined) msg
+    
     putStrLn "Called PRIVMSG"
     return server
     
   | fromJust (mCode msg) == "PING"        = do
-    let eventCall = (\(Ping f) -> f server msg)
-    let comp      = (\a -> a == (Ping undefined))
-    let events = filter comp (sEvents server)
-    mapM eventCall events
+    events server (Ping undefined) msg
     putStrLn "Called PING"
     return server
 
   | B.all isNumber (fromJust $ mCode msg) = do
-    let eventCall = (\(Numeric f) -> f server msg)
-    let comp      = (\a -> a == (Numeric undefined))
-    let events = filter comp (sEvents server)
-    mapM eventCall events
+    events server (Numeric undefined) msg
     return server
   
   | otherwise                = do return server
+
+eventFunc :: IrcEvent -> EventFunc
+eventFunc (Privmsg f) = f
+eventFunc (Numeric f) = f
+eventFunc (Ping    f) = f
 
 addEvent :: IrcServer -> IrcEvent -> IrcServer
 addEvent server event = server { sEvents = event:(sEvents server) }
