@@ -16,6 +16,7 @@ import System.IO
 import Data.Maybe
 import Data.Char
 import Data.IORef
+import Control.Monad
 import Network.SimpleIRC.Messages
 import qualified Data.ByteString.Char8 as B
 
@@ -31,7 +32,7 @@ data IrcServer = IrcServer
   , sSock     :: Maybe Handle
   } deriving Show
 
-type EventFunc = (IrcServer -> IrcMessage -> IO ())
+type EventFunc = (IrcServer -> IrcMessage -> IO IrcServer)
 
 -- When adding events here, remember add them in callEvents and in eventFunc
 -- AND also in the Show instance and Eq instance
@@ -97,9 +98,10 @@ listenLoop server = do
   line <- B.hGetLine h
   B.putStrLn $ (B.pack ">> ") `B.append` line
   
-  callEvents server (parse line)
-  
-  listenLoop server
+  newServ <- callEvents server (parse line)
+  -- Call the listenLoop again.
+  -- Events can edit the server.
+  listenLoop newServ
   where h = fromJust $ sSock server
 
 -- Internal Events
@@ -107,8 +109,8 @@ joinChans :: EventFunc
 joinChans server msg = do
   if code == "001"
     then do mapM (\chan -> write h $ "JOIN " `B.append` (B.pack chan)) (sChannels server)
-            return ()
-    else return ()
+            return server {sChannels = []}
+    else return server
   where h    = fromJust $ sSock server
         code = (fromJust $ mCode msg)
 
@@ -116,6 +118,7 @@ pong :: EventFunc
 pong server msg = do
   putStrLn "In pong function"
   write h $ "PONG :" `B.append` pingMsg
+  return server
   where h       = fromJust $ sSock server
         pingMsg = fromJust $ mMsg msg
         code    = fromJust $ mCode msg
@@ -125,8 +128,9 @@ privmsgTest server msg = do
   putStrLn $ show $ privmsg
   putStrLn $ show $ privmsg == "|test"
   if privmsg == "|test" || privmsg == "$kill"
-    then write h $ "PRIVMSG " `B.append` chan `B.append` " :Works!"
-    else return ()
+    then do write h $ "PRIVMSG " `B.append` chan `B.append` " :Works! -- " `B.append` (B.pack $ show $ sChannels server)
+            return server
+    else return server
   where privmsg = fromJust $ mMsg msg
         chan    = fromJust $ mChan msg
         h       = fromJust $ sSock server
@@ -134,28 +138,24 @@ privmsgTest server msg = do
 events :: IrcServer -> IrcEvent -> IrcMessage -> IO IrcServer
 events server event msg = do
   putStrLn $ show events
-  mapM eventCall events
-  return server
+  
+  foldM eventCall server events
   where comp   = (\a -> a == event)
         events = filter comp (sEvents server)
-        eventCall = (\obj -> (eventFunc obj) server msg)
+        eventCall = (\s obj -> (eventFunc obj) s msg)
 
 callEvents :: IrcServer -> IrcMessage -> IO IrcServer
 callEvents server msg
   | fromJust (mCode msg) == "PRIVMSG"     = do
+    putStrLn "Calling PRIVMSG"
     events server (Privmsg undefined) msg
     
-    putStrLn "Called PRIVMSG"
-    return server
-    
   | fromJust (mCode msg) == "PING"        = do
+    putStrLn "Calling PING"
     events server (Ping undefined) msg
-    putStrLn "Called PING"
-    return server
 
   | B.all isNumber (fromJust $ mCode msg) = do
     events server (Numeric undefined) msg
-    return server
   
   | otherwise                = do return server
 
