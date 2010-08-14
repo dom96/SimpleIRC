@@ -7,15 +7,27 @@
 -- Stability : experimental
 -- Portability : non-portable
 --
--- Simple and efficient IRC Library
+-- Core module
 --
 {-# LANGUAGE OverloadedStrings #-}
-module Network.SimpleIRC.Core (IrcServer(..), IrcConfig(..), IrcEvent(..), connect, disconnect, sendRaw) where
+module Network.SimpleIRC.Core
+  ( 
+    -- * Datatypes
+    IrcConfig(..)
+  , IrcServer(..)
+  , IrcEvent(..)
+  
+    -- * Functions
+  , connect
+  , disconnect
+  , sendRaw
+  , sendMsg
+  ) where
+  
 import Network
 import System.IO
 import Data.Maybe
-import Data.Char
-import Data.IORef
+import Data.Char (isNumber)
 import Control.Monad
 import Control.Concurrent
 import Network.SimpleIRC.Messages
@@ -24,13 +36,13 @@ import qualified Data.ByteString.Char8 as B
 -- TODO: Get rid of the debug putStrLn's
 
 data IrcConfig = IrcConfig
-  { cAddr     :: String
-  , cPort     :: Int
-  , cNick     :: String
-  , cUsername :: String
-  , cRealname :: String
-  , cChannels :: [String]
-  , cEvents   :: [IrcEvent]
+  { cAddr     :: String   -- ^ Server address to connect to
+  , cPort     :: Int      -- ^ Server port to connect to
+  , cNick     :: String   -- ^ Nickname
+  , cUsername :: String   -- ^ Username
+  , cRealname :: String   -- ^ Realname
+  , cChannels :: [String]   -- ^ List of channels to join on connect
+  , cEvents   :: [IrcEvent] -- ^ Events to bind
   }
 
 data IrcServer = IrcServer
@@ -49,9 +61,10 @@ type EventFunc = (IrcServer -> IrcMessage -> IO IrcServer)
 
 -- When adding events here, remember add them in callEvents and in eventFunc
 -- AND also in the Show instance and Eq instance
-data IrcEvent = Privmsg EventFunc
-  | Numeric EventFunc
-  | Ping EventFunc
+data IrcEvent = 
+    Privmsg EventFunc -- ^ PRIVMSG
+  | Numeric EventFunc -- ^ Numeric, 001, 002, 372 etc.
+  | Ping EventFunc    -- ^ PING
   
 instance Show IrcEvent where
   show (Privmsg _) = "IrcEvent - Privmsg"
@@ -64,11 +77,12 @@ instance Eq IrcEvent where
   (Ping    _) == (Ping    _) = True
   _ == _                     = False
 
--- let config = IrcConfig "irc.freenode.net" 6667 "haskellTestBot" "test" "test 1" ["#()"] []
-
 internalEvents = [(Numeric joinChans), (Ping pong)]
 
-connect :: IrcConfig -> Bool -> IO IrcServer
+-- |Connects to a server
+connect :: IrcConfig -- ^ Configuration
+           -> Bool   -- ^ Run in a new thread
+           -> IO IrcServer -- ^ IrcServer instance
 connect config threaded = do
   h <- connectTo (cAddr config) (PortNumber $ fromIntegral $ cPort config)
   hSetBuffering h NoBuffering
@@ -90,7 +104,10 @@ toServer config events h =
             (B.pack $ cUsername config) (B.pack $ cRealname config) (map B.pack $ cChannels config) 
             (cEvents config ++ events) (Just h) Nothing
 
-disconnect :: IrcServer -> B.ByteString -> IO IrcServer
+-- |Sends a QUIT command to the server.
+disconnect :: IrcServer
+              -> B.ByteString -- ^ Quit message
+              -> IO IrcServer
 disconnect server quitMsg = do
   write h $ "QUIT :" `B.append` quitMsg
   return server
@@ -168,15 +185,17 @@ eventFunc (Privmsg f) = f
 eventFunc (Numeric f) = f
 eventFunc (Ping    f) = f
 
--- I Don't have a better name idea.
-modifyIORefIO :: IORef a -> (a -> IO a) -> IO ()
-modifyIORefIO ref f = do
-  obj <- readIORef ref
-  ret <- f obj
-  writeIORef ref ret
-
+-- |Sends a raw command to the server
 sendRaw :: IrcServer -> B.ByteString -> IO ()
 sendRaw server msg = write (fromJust $ sSock server) msg
+
+-- |Sends a message to a channel
+sendMsg :: IrcServer 
+           -> B.ByteString -- ^ Channel
+           -> B.ByteString -- ^ Message
+           -> IO ()
+sendMsg server chan msg =
+  sendRaw server ("PRIVMSG " `B.append` chan `B.append` " :" `B.append` msg)
 
 write :: Handle -> B.ByteString -> IO ()
 write h msg = do

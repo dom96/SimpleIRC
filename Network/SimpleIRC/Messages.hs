@@ -23,7 +23,7 @@ data IrcMessage = IrcMessage
 
 -- :asimov.freenode.net 333 haskellTestBot #() Raynes!~macr0@unaffiliated/raynes 1281221819
 
-
+-- |Parse a raw IRC message
 parse :: B.ByteString -> IrcMessage
 parse txt = 
   case length split of 2 -> parse2 split
