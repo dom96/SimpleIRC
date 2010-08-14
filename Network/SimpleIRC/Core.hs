@@ -10,7 +10,7 @@
 -- Simple and efficient IRC Library
 --
 {-# LANGUAGE OverloadedStrings #-}
-module Network.SimpleIRC.Core (IrcServer(..), IrcEvent, connect, disconnect, addEvent) where
+module Network.SimpleIRC.Core (IrcServer(..), IrcConfig(..), IrcEvent, connect, disconnect, addEvent) where
 import Network
 import System.IO
 import Data.Maybe
@@ -21,6 +21,17 @@ import Network.SimpleIRC.Messages
 import qualified Data.ByteString.Char8 as B
 
 -- TODO: Get rid of the debug putStrLn's
+
+data IrcConfig = IrcConfig
+  { cAddr     :: String
+  , cPort     :: Int
+  , cNick     :: String
+  , cUsername :: String
+  , cRealname :: String
+  , cChannels :: [String]
+  , cEvents   :: [IrcEvent]
+  }
+
 data IrcServer = IrcServer
   { sAddr     :: String
   , sPort     :: Int
@@ -51,29 +62,30 @@ instance Eq IrcEvent where
   (Ping    _) == (Ping    _) = True
   _ == _                     = False
 
--- let serv = IrcServer "irc.freenode.net" 6667 "haskellTestBot" "test" "test 1" ["#()", "##XAMPP"] [] Nothing
+-- let config = IrcConfig "irc.freenode.net" 6667 "haskellTestBot" "test" "test 1" ["#()"] []
 
-connect :: IrcServer -> IO IrcServer
-connect server = do
-  cServ <- cServIO
-  h <- connectTo (sAddr server) (PortNumber $ fromIntegral $ sPort server)
+internalEvents = [(Numeric joinChans), (Ping pong), (Privmsg privmsgTest)]
+
+connect :: IrcConfig -> IO IrcServer
+connect config = do
+  h <- connectTo (cAddr config) (PortNumber $ fromIntegral $ cPort config)
   hSetBuffering h NoBuffering
-  writeIORef cServ (server { sSock = Just h })
   
-  -- Add internal events
-  modifyIORef cServ (flip addEvent (Numeric joinChans))
-  modifyIORef cServ (flip addEvent (Ping pong))
-  modifyIORef cServ (flip addEvent (Privmsg privmsgTest))
-  
+  let server = toServer config internalEvents h
   -- Initialize connection with the server
-  modifyIORefIO cServ greetServer
+  greetServer server
   
   -- Start listening
-  modifyIORefIO cServ listenLoop 
+  listenLoop server
   
-  readIORef cServ -- Return the IrcServer
-  where cServIO = newIORef server -- We need this to edit the server
-  
+  return server
+    
+toServer :: IrcConfig -> [IrcEvent] -> Handle -> IrcServer
+toServer config events h = 
+  IrcServer (cAddr config) (cPort config) (cNick config) 
+            (cUsername config) (cRealname config) (cChannels config) 
+            (cEvents config ++ events) (Just h)
+
 disconnect :: IrcServer -> B.ByteString -> IO IrcServer
 disconnect server quitMsg = do
   write h $ "QUIT :" `B.append` quitMsg
