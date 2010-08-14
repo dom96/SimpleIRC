@@ -10,13 +10,14 @@
 -- Simple and efficient IRC Library
 --
 {-# LANGUAGE OverloadedStrings #-}
-module Network.SimpleIRC.Core (IrcServer(..), IrcConfig(..), IrcEvent, connect, disconnect, addEvent) where
+module Network.SimpleIRC.Core (IrcServer(..), IrcConfig(..), IrcEvent(..), connect, disconnect, sendRaw) where
 import Network
 import System.IO
 import Data.Maybe
 import Data.Char
 import Data.IORef
 import Control.Monad
+import Control.Concurrent
 import Network.SimpleIRC.Messages
 import qualified Data.ByteString.Char8 as B
 
@@ -41,6 +42,7 @@ data IrcServer = IrcServer
   , sChannels :: [B.ByteString]
   , sEvents   :: [IrcEvent]
   , sSock     :: Maybe Handle
+  , sListenThread :: Maybe ThreadId
   } deriving Show
 
 type EventFunc = (IrcServer -> IrcMessage -> IO IrcServer)
@@ -64,10 +66,10 @@ instance Eq IrcEvent where
 
 -- let config = IrcConfig "irc.freenode.net" 6667 "haskellTestBot" "test" "test 1" ["#()"] []
 
-internalEvents = [(Numeric joinChans), (Ping pong), (Privmsg privmsgTest)]
+internalEvents = [(Numeric joinChans), (Ping pong)]
 
-connect :: IrcConfig -> IO IrcServer
-connect config = do
+connect :: IrcConfig -> Bool -> IO IrcServer
+connect config threaded = do
   h <- connectTo (cAddr config) (PortNumber $ fromIntegral $ cPort config)
   hSetBuffering h NoBuffering
   
@@ -76,15 +78,17 @@ connect config = do
   greetServer server
   
   -- Start listening
-  listenLoop server
-  
-  return server
+  if threaded
+    then do listenId <- forkIO (listenLoop server)
+            return server {sListenThread = Just listenId}
+    else do listenLoop server
+            return server
     
 toServer :: IrcConfig -> [IrcEvent] -> Handle -> IrcServer
 toServer config events h = 
   IrcServer (B.pack $ cAddr config) (cPort config) (B.pack $ cNick config) 
             (B.pack $ cUsername config) (B.pack $ cRealname config) (map B.pack $ cChannels config) 
-            (cEvents config ++ events) (Just h)
+            (cEvents config ++ events) (Just h) Nothing
 
 disconnect :: IrcServer -> B.ByteString -> IO IrcServer
 disconnect server quitMsg = do
@@ -105,7 +109,7 @@ greetServer server = do
         addr = sAddr server
         h    = fromJust $ sSock server
 
-listenLoop :: IrcServer -> IO IrcServer
+listenLoop :: IrcServer -> IO ()
 listenLoop server = do
   line <- B.hGetLine h
   B.putStrLn $ (B.pack ">> ") `B.append` line
@@ -134,18 +138,6 @@ pong server msg = do
   where h       = fromJust $ sSock server
         pingMsg = fromJust $ mMsg msg
         code    = fromJust $ mCode msg
-
-privmsgTest :: EventFunc
-privmsgTest server msg = do
-  putStrLn $ show $ privmsg
-  putStrLn $ show $ privmsg == "|test"
-  if privmsg == "|test" || privmsg == "$kill"
-    then do write h $ "PRIVMSG " `B.append` chan `B.append` " :Works! -- " `B.append` (B.pack $ show $ sChannels server)
-            return server
-    else return server
-  where privmsg = fromJust $ mMsg msg
-        chan    = fromJust $ mChan msg
-        h       = fromJust $ sSock server
 
 events :: IrcServer -> IrcEvent -> IrcMessage -> IO IrcServer
 events server event msg = do
@@ -176,15 +168,15 @@ eventFunc (Privmsg f) = f
 eventFunc (Numeric f) = f
 eventFunc (Ping    f) = f
 
-addEvent :: IrcServer -> IrcEvent -> IrcServer
-addEvent server event = server { sEvents = event:(sEvents server) }
-
 -- I Don't have a better name idea.
 modifyIORefIO :: IORef a -> (a -> IO a) -> IO ()
 modifyIORefIO ref f = do
   obj <- readIORef ref
   ret <- f obj
   writeIORef ref ret
+
+sendRaw :: IrcServer -> B.ByteString -> IO ()
+sendRaw server msg = write (fromJust $ sSock server) msg
 
 write :: Handle -> B.ByteString -> IO ()
 write h msg = do
