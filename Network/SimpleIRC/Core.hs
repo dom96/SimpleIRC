@@ -33,12 +33,12 @@ data IrcConfig = IrcConfig
   }
 
 data IrcServer = IrcServer
-  { sAddr     :: String
+  { sAddr     :: B.ByteString
   , sPort     :: Int
-  , sNickname :: String
-  , sUsername :: String
-  , sRealname :: String
-  , sChannels :: [String]
+  , sNickname :: B.ByteString
+  , sUsername :: B.ByteString
+  , sRealname :: B.ByteString
+  , sChannels :: [B.ByteString]
   , sEvents   :: [IrcEvent]
   , sSock     :: Maybe Handle
   } deriving Show
@@ -82,8 +82,8 @@ connect config = do
     
 toServer :: IrcConfig -> [IrcEvent] -> Handle -> IrcServer
 toServer config events h = 
-  IrcServer (cAddr config) (cPort config) (cNick config) 
-            (cUsername config) (cRealname config) (cChannels config) 
+  IrcServer (B.pack $ cAddr config) (cPort config) (B.pack $ cNick config) 
+            (B.pack $ cUsername config) (B.pack $ cRealname config) (map B.pack $ cChannels config) 
             (cEvents config ++ events) (Just h)
 
 disconnect :: IrcServer -> B.ByteString -> IO IrcServer
@@ -99,10 +99,10 @@ greetServer server = do
       user `B.append` " " `B.append` addr `B.append` " :" `B.append` real
   
   return server
-  where nick = B.pack $ sNickname server
-        user = B.pack $ sUsername server
-        real = B.pack $ sRealname server
-        addr = B.pack $ sAddr server
+  where nick = sNickname server
+        user = sUsername server
+        real = sRealname server
+        addr = sAddr server
         h    = fromJust $ sSock server
 
 listenLoop :: IrcServer -> IO IrcServer
@@ -120,7 +120,7 @@ listenLoop server = do
 joinChans :: EventFunc
 joinChans server msg = do
   if code == "001"
-    then do mapM (\chan -> write h $ "JOIN " `B.append` (B.pack chan)) (sChannels server)
+    then do mapM (\chan -> write h $ "JOIN " `B.append` chan) (sChannels server)
             return server {sChannels = []}
     else return server
   where h    = fromJust $ sSock server
