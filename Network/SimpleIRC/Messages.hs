@@ -1,16 +1,7 @@
-module Network.SimpleIRC.Messages (IrcMessage(..), parse) where
+module Network.SimpleIRC.Messages (parse) where
 import Data.Maybe
+import Network.SimpleIRC.Types
 import qualified Data.ByteString.Char8 as B
-
-data IrcMessage = IrcMessage
-  { mNick   :: Maybe B.ByteString
-  , mHost   :: Maybe B.ByteString
-  , mServer :: Maybe B.ByteString
-  , mCode   :: Maybe B.ByteString
-  , mMsg    :: Maybe B.ByteString
-  , mChan   :: Maybe B.ByteString
-  , mOther  :: Maybe [B.ByteString]
-  } deriving Show
 
 -- PING :asimov.freenode.net
 -- :haskellTestBot!~test@host86-177-151-242.range86-177.btcentralplus.com JOIN :#()

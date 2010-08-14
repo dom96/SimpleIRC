@@ -12,13 +12,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Network.SimpleIRC.Core
   ( 
-    -- * Datatypes
-    IrcConfig(..)
-  , IrcServer(..)
-  , IrcEvent(..)
-  
     -- * Functions
-  , connect
+    connect
   , disconnect
   , sendRaw
   , sendMsg
@@ -31,57 +26,16 @@ import Data.Char (isNumber)
 import Control.Monad
 import Control.Concurrent
 import Network.SimpleIRC.Messages
+import Network.SimpleIRC.Types
 import qualified Data.ByteString.Char8 as B
 
 -- TODO: Get rid of the debug putStrLn's
 
-data IrcConfig = IrcConfig
-  { cAddr     :: String   -- ^ Server address to connect to
-  , cPort     :: Int      -- ^ Server port to connect to
-  , cNick     :: String   -- ^ Nickname
-  , cUsername :: String   -- ^ Username
-  , cRealname :: String   -- ^ Realname
-  , cChannels :: [String]   -- ^ List of channels to join on connect
-  , cEvents   :: [IrcEvent] -- ^ Events to bind
-  }
-
-data IrcServer = IrcServer
-  { sAddr     :: B.ByteString
-  , sPort     :: Int
-  , sNickname :: B.ByteString
-  , sUsername :: B.ByteString
-  , sRealname :: B.ByteString
-  , sChannels :: [B.ByteString]
-  , sEvents   :: [IrcEvent]
-  , sSock     :: Maybe Handle
-  , sListenThread :: Maybe ThreadId
-  } deriving Show
-
-type EventFunc = (IrcServer -> IrcMessage -> IO IrcServer)
-
--- When adding events here, remember add them in callEvents and in eventFunc
--- AND also in the Show instance and Eq instance
-data IrcEvent = 
-    Privmsg EventFunc -- ^ PRIVMSG
-  | Numeric EventFunc -- ^ Numeric, 001, 002, 372 etc.
-  | Ping EventFunc    -- ^ PING
-  
-instance Show IrcEvent where
-  show (Privmsg _) = "IrcEvent - Privmsg"
-  show (Numeric _) = "IrcEvent - Numeric"
-  show (Ping    _) = "IrcEvent - Ping"
-
-instance Eq IrcEvent where
-  (Privmsg _) == (Privmsg _) = True
-  (Numeric _) == (Numeric _) = True
-  (Ping    _) == (Ping    _) = True
-  _ == _                     = False
-
 internalEvents = [(Numeric joinChans), (Ping pong)]
 
 -- |Connects to a server
-connect :: IrcConfig -- ^ Configuration
-           -> Bool   -- ^ Run in a new thread
+connect :: IrcConfig       -- ^ Configuration
+           -> Bool         -- ^ Run in a new thread
            -> IO IrcServer -- ^ IrcServer instance
 connect config threaded = do
   h <- connectTo (cAddr config) (PortNumber $ fromIntegral $ cPort config)

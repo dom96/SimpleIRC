@@ -28,4 +28,4 @@ Library
     Network.SimpleIRC
     Network.SimpleIRC.Core
     Network.SimpleIRC.Messages
-
+    Network.SimpleIRC.Types
