@@ -23,6 +23,7 @@ data IrcServer = IrcServer
 type EventFunc = (IrcServer -> IrcMessage -> IO ())
 
 -- When adding events here, remember add them in callEvents and in eventFunc
+-- AND also in the Show instance and Eq instance
 data IrcEvent = Privmsg EventFunc
   | Numeric EventFunc
   | Ping EventFunc
@@ -30,10 +31,12 @@ data IrcEvent = Privmsg EventFunc
 instance Show IrcEvent where
   show (Privmsg _) = "IrcEvent - Privmsg"
   show (Numeric _) = "IrcEvent - Numeric"
+  show (Ping    _) = "IrcEvent - Ping"
 
 instance Eq IrcEvent where
   (Privmsg _) == (Privmsg _) = True
   (Numeric _) == (Numeric _) = True
+  (Ping    _) == (Ping    _) = True
   _ == _                     = False
 
 -- let serv = IrcServer "irc.freenode.net" 6667 "haskellTestBot" "test" "test 1" ["#()", "##XAMPP"] [] Nothing
@@ -119,6 +122,7 @@ privmsgTest server msg = do
 
 events :: IrcServer -> IrcEvent -> IrcMessage -> IO IrcServer
 events server event msg = do
+  putStrLn $ show events
   mapM eventCall events
   return server
   where comp   = (\a -> a == event)
