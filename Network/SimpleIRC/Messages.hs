@@ -1,4 +1,4 @@
-module Messages (IrcMessage(..), parse) where
+module Network.SimpleIRC.Messages (IrcMessage(..), parse) where
 import Data.Maybe
 import qualified Data.ByteString.Char8 as B
 

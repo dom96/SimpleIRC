@@ -1,0 +1,31 @@
+Name:          simpleirc
+Version:       0.1.0
+Category:      Network
+Synopsis:      Simple IRC Library
+Package-URL:   http://code.haskell.org/fastirc/
+Maintainer:    Dominik Picheta <dominikpicheta@googlemail.com>
+Author:        Dominik Picheta <dominikpicheta@googlemail.com>
+Copyright:     (c) 2010 Dominik Picheta
+License:       BSD3
+License-file:  license
+Build-type:    Simple
+Stability:     alpha
+Cabal-version: >= 1.6
+Description:
+  Simple IRC Library. This IRC Library aims to be simple and lightweight.
+
+Source-repository head
+  Type:     git
+  Location: git://github.com/dom96/SimpleIRC.git
+
+
+Library
+  Build-depends:
+    base >= 4 && < 5,
+    bytestring >= 0.9.1.7,
+    network >= 2.2.1.7
+  Exposed-modules:
+    Network.SimpleIRC
+    Network.SimpleIRC.Core
+    Network.SimpleIRC.Messages
+

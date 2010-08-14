@@ -1,11 +1,22 @@
+-- |
+-- Module : Network.SimpleIRC.Core
+-- Copyright : (c) Dominik Picheta 2010
+-- License : BSD3
+--
+-- Maintainer : morfeusz8@gmail.com
+-- Stability : experimental
+-- Portability : non-portable
+--
+-- Simple and efficient IRC Library
+--
 {-# LANGUAGE OverloadedStrings #-}
-module Irc (IrcServer(..), IrcEvent, connect, disconnect, addEvent) where
+module Network.SimpleIRC.Core (IrcServer(..), IrcEvent, connect, disconnect, addEvent) where
 import Network
 import System.IO
 import Data.Maybe
 import Data.Char
 import Data.IORef
-import Messages
+import Network.SimpleIRC.Messages
 import qualified Data.ByteString.Char8 as B
 
 -- TODO: Get rid of the debug putStrLn's
