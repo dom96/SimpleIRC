@@ -4,7 +4,7 @@
 -- License : BSD3
 --
 -- Maintainer : morfeusz8@gmail.com
--- Stability : experimental
+-- Stability : Alpha
 -- Portability : non-portable
 --
 -- Core module
@@ -52,12 +52,6 @@ connect config threaded = do
     else do listenLoop server
             return server
     
-toServer :: IrcConfig -> [IrcEvent] -> Handle -> IrcServer
-toServer config events h = 
-  IrcServer (B.pack $ cAddr config) (cPort config) (B.pack $ cNick config) 
-            (B.pack $ cUsername config) (B.pack $ cRealname config) (map B.pack $ cChannels config) 
-            (cEvents config ++ events) (Just h) Nothing
-
 -- |Sends a QUIT command to the server.
 disconnect :: IrcServer
               -> B.ByteString -- ^ Quit message
@@ -66,6 +60,13 @@ disconnect server quitMsg = do
   write h $ "QUIT :" `B.append` quitMsg
   return server
   where h = fromJust $ sSock server
+
+
+toServer :: IrcConfig -> [IrcEvent] -> Handle -> IrcServer
+toServer config events h = 
+  IrcServer (B.pack $ cAddr config) (cPort config) (B.pack $ cNick config) 
+            (B.pack $ cUsername config) (B.pack $ cRealname config) (map B.pack $ cChannels config) 
+            (cEvents config ++ events) (Just h) Nothing  
 
 greetServer :: IrcServer -> IO IrcServer
 greetServer server = do
@@ -82,15 +83,25 @@ greetServer server = do
 
 listenLoop :: IrcServer -> IO ()
 listenLoop server = do
-  line <- B.hGetLine h
-  B.putStrLn $ (B.pack ">> ") `B.append` line
-  
-  newServ <- callEvents server (parse line)
-  -- Call the listenLoop again.
-  -- Events can edit the server.
-  listenLoop newServ
-  where h = fromJust $ sSock server
-
+  let h = fromJust $ sSock server
+  eof <- hIsEOF h
+  if eof 
+    then do
+      let comp   = (\a -> a `eqEvent` (Disconnect undefined))
+          events = filter comp (sEvents server)
+          eventCall = (\obj -> (eventFuncD obj) server)
+      putStrLn $ show events
+      mapM eventCall events
+      return ()
+    else do
+      line <- B.hGetLine h
+      B.putStrLn $ (B.pack ">> ") `B.append` line
+      
+      newServ <- callEvents server (parse line)
+      -- Call the listenLoop again.
+      -- Events can edit the server.
+      listenLoop newServ
+    
 -- Internal Events
 joinChans :: EventFunc
 joinChans server msg = do
@@ -115,29 +126,77 @@ events server event msg = do
   putStrLn $ show events
   
   foldM eventCall server events
-  where comp   = (\a -> a == event)
+  where comp   = (\a -> a `eqEvent` event)
         events = filter comp (sEvents server)
         eventCall = (\s obj -> (eventFunc obj) s msg)
 
 callEvents :: IrcServer -> IrcMessage -> IO IrcServer
 callEvents server msg
   | fromJust (mCode msg) == "PRIVMSG"     = do
-    putStrLn "Calling PRIVMSG"
     events server (Privmsg undefined) msg
     
   | fromJust (mCode msg) == "PING"        = do
-    putStrLn "Calling PING"
     events server (Ping undefined) msg
+
+  | fromJust (mCode msg) == "JOIN"        = do
+    events server (Join undefined) msg
+  
+  | fromJust (mCode msg) == "PART"        = do
+    events server (Part undefined) msg
+
+  | fromJust (mCode msg) == "MODE"        = do
+    events server (Mode undefined) msg
+
+  | fromJust (mCode msg) == "TOPIC"       = do
+    events server (Topic undefined) msg
+
+  | fromJust (mCode msg) == "INVITE"      = do
+    events server (Invite undefined) msg
+
+  | fromJust (mCode msg) == "KICK"        = do
+    events server (Kick undefined) msg
+
+  | fromJust (mCode msg) == "QUIT"        = do
+    events server (Quit undefined) msg
+
+  | fromJust (mCode msg) == "NICK"        = do
+    events server (Nick undefined) msg
 
   | B.all isNumber (fromJust $ mCode msg) = do
     events server (Numeric undefined) msg
   
-  | otherwise                = do return server
+  | otherwise                = do
+    events server (RawMsg undefined) msg
+
+(Privmsg _) `eqEvent` (Privmsg _) = True
+(Numeric _) `eqEvent` (Numeric _) = True
+(Ping    _) `eqEvent` (Ping    _) = True
+(Join    _) `eqEvent` (Join    _) = True
+(Part    _) `eqEvent` (Part    _) = True
+(Mode    _) `eqEvent` (Mode    _) = True
+(Topic   _) `eqEvent` (Topic   _) = True
+(Invite  _) `eqEvent` (Invite  _) = True
+(Kick    _) `eqEvent` (Kick    _) = True
+(Quit    _) `eqEvent` (Quit    _) = True
+(Nick    _) `eqEvent` (Nick    _) = True
+(RawMsg  _) `eqEvent` (RawMsg  _) = True
+(Disconnect  _) `eqEvent` (Disconnect  _) = True
+_ `eqEvent` _                     = False
 
 eventFunc :: IrcEvent -> EventFunc
 eventFunc (Privmsg f) = f
 eventFunc (Numeric f) = f
 eventFunc (Ping    f) = f
+eventFunc (Join    f) = f
+eventFunc (Part    f) = f
+eventFunc (Mode    f) = f
+eventFunc (Topic   f) = f
+eventFunc (Invite  f) = f
+eventFunc (Kick    f) = f
+eventFunc (Quit    f) = f
+eventFunc (Nick    f) = f
+eventFunc (RawMsg  f) = f
+eventFuncD (Disconnect  f) = f
 
 -- |Sends a raw command to the server
 sendRaw :: IrcServer -> B.ByteString -> IO ()

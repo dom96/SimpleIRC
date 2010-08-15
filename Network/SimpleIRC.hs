@@ -4,7 +4,7 @@
 -- License : BSD3
 --
 -- Maintainer : morfeusz8@gmail.com
--- Stability : experimental
+-- Stability : Alpha
 -- Portability : non-portable
 --
 -- Simple and efficient IRC Library

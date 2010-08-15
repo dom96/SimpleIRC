@@ -41,17 +41,32 @@ data IrcEvent =
     Privmsg EventFunc -- ^ PRIVMSG
   | Numeric EventFunc -- ^ Numeric, 001, 002, 372 etc.
   | Ping EventFunc    -- ^ PING
+  | Join EventFunc    -- ^ JOIN
+  | Part EventFunc    -- ^ PART
+  | Mode EventFunc    -- ^ MODE
+  | Topic EventFunc   -- ^ TOPIC
+  | Invite EventFunc  -- ^ INVITE
+  | Kick EventFunc    -- ^ KICK
+  | Quit EventFunc    -- ^ QUIT
+  | Nick EventFunc    -- ^ NICK
+  | RawMsg EventFunc  -- ^ This event gets called on every message received
+  | Disconnect (IrcServer -> IO ())
+  
   
 instance Show IrcEvent where
   show (Privmsg _) = "IrcEvent - Privmsg"
   show (Numeric _) = "IrcEvent - Numeric"
   show (Ping    _) = "IrcEvent - Ping"
-
-instance Eq IrcEvent where
-  (Privmsg _) == (Privmsg _) = True
-  (Numeric _) == (Numeric _) = True
-  (Ping    _) == (Ping    _) = True
-  _ == _                     = False
+  show (Join    _) = "IrcEvent - Join"
+  show (Part    _) = "IrcEvent - Part"
+  show (Mode    _) = "IrcEvent - Mode"
+  show (Topic   _) = "IrcEvent - Topic"
+  show (Invite  _) = "IrcEvent - Invite"
+  show (Kick    _) = "IrcEvent - Kick"
+  show (Quit    _) = "IrcEvent - Quit"
+  show (Nick    _) = "IrcEvent - Nick"
+  show (RawMsg  _) = "IrcEvent - RawMsg"
+  show (Disconnect  _) = "IrcEvent - Disconnect"
   
 data IrcMessage = IrcMessage
   { mNick   :: Maybe B.ByteString
@@ -61,4 +76,5 @@ data IrcMessage = IrcMessage
   , mMsg    :: Maybe B.ByteString
   , mChan   :: Maybe B.ByteString
   , mOther  :: Maybe [B.ByteString]
+  , mRaw    :: B.ByteString
   } deriving Show

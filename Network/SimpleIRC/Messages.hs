@@ -17,15 +17,15 @@ import qualified Data.ByteString.Char8 as B
 -- |Parse a raw IRC message
 parse :: B.ByteString -> IrcMessage
 parse txt = 
-  case length split of 2 -> parse2 split
-                       3 -> parse3 split
-                       4 -> parse4 split 
-                       5 -> parse5 split
-                       otherwise -> parseOther split
+  case length split of 2 -> (parse2 split) txt
+                       3 -> (parse3 split) txt
+                       4 -> (parse4 split) txt 
+                       5 -> (parse5 split) txt
+                       otherwise -> (parseOther split) txt
                        
   where split = smartSplit (takeCarriageRet txt)
 
-parse4 :: [B.ByteString] -> IrcMessage
+parse4 :: [B.ByteString] -> (B.ByteString -> IrcMessage)
 parse4 (first:code:chan:msg:_) = 
   let (nick, host, server) = parseFirst first
   in IrcMessage nick host server (Just code)
@@ -45,22 +45,22 @@ dropColon xs =
     then B.drop 1 xs
     else xs
 
-parse2 :: [B.ByteString] -> IrcMessage
+parse2 :: [B.ByteString] -> (B.ByteString -> IrcMessage)
 parse2 (code:msg:_) =
   IrcMessage Nothing Nothing Nothing (Just code)
     (Just $ dropColon msg) Nothing Nothing
     
-parse3 :: [B.ByteString] -> IrcMessage
+parse3 :: [B.ByteString] -> (B.ByteString -> IrcMessage)
 parse3 (first:code:msg:_) =
   let (nick, host, server) = parseFirst first
   in IrcMessage nick host server (Just code) (Just msg) Nothing Nothing
   
-parse5 :: [B.ByteString] -> IrcMessage
+parse5 :: [B.ByteString] -> (B.ByteString -> IrcMessage)
 parse5 (server:code:nick:chan:msg:_) =
   IrcMessage (Just nick) Nothing (Just server) (Just code)
     (Just $ dropColon msg) (Just chan) Nothing
 
-parseOther :: [B.ByteString] -> IrcMessage
+parseOther :: [B.ByteString] -> (B.ByteString -> IrcMessage)
 parseOther (server:code:nick:chan:other) =
   IrcMessage (Just nick) Nothing (Just server) (Just code)
     Nothing (Just chan) (Just other)

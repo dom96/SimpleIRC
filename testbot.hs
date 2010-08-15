@@ -30,8 +30,19 @@ init2 s msg
     return s {sChannels = "test2" : chans}
   | otherwise = return s
 
+quitMsg :: EventFunc
+quitMsg s msg
+  | (fromJust $ mMsg msg) == "|quit" = do
+    disconnect s "Bai!"
+    return s
+  | otherwise = return s
+
+onDisconnect :: IrcServer -> IO ()
+onDisconnect s = B.putStrLn $ "Disconnected from " `B.append` (sAddr s)
+
 main = do
-  let freenode = IrcConfig "irc.freenode.net" 6667 "SimpleIRCBot" "simpleirc" "test 1" ["##XAMPP", "#()"] [(Privmsg privmsgTest), (Privmsg init1),(Privmsg init2)]
+  let freenode = IrcConfig "irc.freenode.net" 6667 "SimpleIRCBot" "simpleirc" "test 1" ["##XAMPP", "#()"] 
+                    [(Privmsg privmsgTest), (Privmsg init1), (Privmsg init2), (Privmsg quitMsg), (Disconnect onDisconnect)]
   let ninthbit = IrcConfig "irc.ninthbit.net" 6667 "SimpleIRCBot" "simpleirc" "test 1" ["#bots"] [(Privmsg privmsgTest)]
   connect freenode True
   connect ninthbit False
