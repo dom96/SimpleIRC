@@ -111,7 +111,7 @@ joinChans server msg = do
             return server {sChannels = []}
     else return server
   where h    = fromJust $ sSock server
-        code = (fromJust $ mCode msg)
+        code = mCode msg
 
 pong :: IrcServer -> IrcMessage -> IO IrcServer
 pong server msg = do
@@ -123,20 +123,20 @@ pong server msg = do
     else return server
     
   where h       = fromJust $ sSock server
-        pingMsg = fromJust $ mMsg msg
-        code    = fromJust $ mCode msg
+        pingMsg = mMsg msg
+        code    = mCode msg
 
 onJoin :: IrcServer -> IrcMessage -> IO IrcServer
 onJoin server msg
   | code == "JOIN" = do
     let nick = fromJust $ mNick msg
-        chan  = fromJust $ mMsg msg
+        chan  = mMsg msg
     if nick == sNickname server
       then return server { sChannels = chan:(sChannels server) }
       else return server
   | otherwise = return server
   
-  where code = fromJust $ mCode msg
+  where code = mCode msg
 
 
 -- Event code
@@ -150,37 +150,37 @@ events server event msg = do
 
 callEvents :: IrcServer -> IrcMessage -> IO ()
 callEvents server msg
-  | fromJust (mCode msg) == "PRIVMSG"     = do
+  | mCode msg == "PRIVMSG"     = do
     events server (Privmsg undefined) msg
     
-  | fromJust (mCode msg) == "PING"        = do
+  | mCode msg == "PING"        = do
     events server (Ping undefined) msg
 
-  | fromJust (mCode msg) == "JOIN"        = do
+  | mCode msg == "JOIN"        = do
     events server (Join undefined) msg
   
-  | fromJust (mCode msg) == "PART"        = do
+  | mCode msg == "PART"        = do
     events server (Part undefined) msg
 
-  | fromJust (mCode msg) == "MODE"        = do
+  | mCode msg == "MODE"        = do
     events server (Mode undefined) msg
 
-  | fromJust (mCode msg) == "TOPIC"       = do
+  | mCode msg == "TOPIC"       = do
     events server (Topic undefined) msg
 
-  | fromJust (mCode msg) == "INVITE"      = do
+  | mCode msg == "INVITE"      = do
     events server (Invite undefined) msg
 
-  | fromJust (mCode msg) == "KICK"        = do
+  | mCode msg == "KICK"        = do
     events server (Kick undefined) msg
 
-  | fromJust (mCode msg) == "QUIT"        = do
+  | mCode msg == "QUIT"        = do
     events server (Quit undefined) msg
 
-  | fromJust (mCode msg) == "NICK"        = do
+  | mCode msg == "NICK"        = do
     events server (Nick undefined) msg
 
-  | B.all isNumber (fromJust $ mCode msg) = do
+  | B.all isNumber (mCode msg) = do
     events server (Numeric undefined) msg
   
   | otherwise                = do

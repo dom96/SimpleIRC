@@ -11,7 +11,7 @@ onMessage s m
     sendMsg s chan (B.drop 1 $ B.dropWhile (/= ' ') msg)
   | otherwise = return ()
   where chan = fromJust $ mChan m
-        msg = fromJust $ mMsg m
+        msg = mMsg m
         
 events = [(Privmsg onMessage)]
 

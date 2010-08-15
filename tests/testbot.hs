@@ -12,12 +12,12 @@ privmsgTest s msg = do
                 `B.append` (B.pack $ show $ sChannels s) `B.append`
                 " -- " `B.append` (B.pack $ show $ sAddr s))
     else return ()
-  where privmsg = fromJust $ mMsg msg
+  where privmsg = mMsg msg
         chan    = fromJust $ mChan msg
 
 quitMsg :: EventFunc
 quitMsg s msg
-  | (fromJust $ mMsg msg) == "|quit" = do
+  | mMsg msg == "|quit" = do
     disconnect s "Bai!"
   | otherwise = return ()
 

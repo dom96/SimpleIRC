@@ -72,8 +72,8 @@ data IrcMessage = IrcMessage
   { mNick   :: Maybe B.ByteString
   , mHost   :: Maybe B.ByteString
   , mServer :: Maybe B.ByteString
-  , mCode   :: Maybe B.ByteString
-  , mMsg    :: Maybe B.ByteString
+  , mCode   :: B.ByteString
+  , mMsg    :: B.ByteString
   , mChan   :: Maybe B.ByteString
   , mOther  :: Maybe [B.ByteString]
   , mRaw    :: B.ByteString
