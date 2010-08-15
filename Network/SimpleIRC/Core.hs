@@ -31,7 +31,7 @@ import qualified Data.ByteString.Char8 as B
 
 -- TODO: Get rid of the debug putStrLn's
 
-internalEvents = [(Numeric joinChans), (Ping pong)]
+internalEvents = [joinChans, pong]
 
 -- |Connects to a server
 connect :: IrcConfig       -- ^ Configuration
@@ -41,7 +41,7 @@ connect config threaded = do
   h <- connectTo (cAddr config) (PortNumber $ fromIntegral $ cPort config)
   hSetBuffering h NoBuffering
   
-  let server = toServer config internalEvents h
+  let server = toServer config h
   -- Initialize connection with the server
   greetServer server
   
@@ -55,18 +55,18 @@ connect config threaded = do
 -- |Sends a QUIT command to the server.
 disconnect :: IrcServer
               -> B.ByteString -- ^ Quit message
-              -> IO IrcServer
+              -> IO ()
 disconnect server quitMsg = do
   write h $ "QUIT :" `B.append` quitMsg
-  return server
+  return ()
   where h = fromJust $ sSock server
 
 
-toServer :: IrcConfig -> [IrcEvent] -> Handle -> IrcServer
-toServer config events h = 
+toServer :: IrcConfig -> Handle -> IrcServer
+toServer config h = 
   IrcServer (B.pack $ cAddr config) (cPort config) (B.pack $ cNick config) 
             (B.pack $ cUsername config) (B.pack $ cRealname config) (map B.pack $ cChannels config) 
-            (cEvents config ++ events) (Just h) Nothing  
+            (cEvents config) (Just h) Nothing  
 
 greetServer :: IrcServer -> IO IrcServer
 greetServer server = do
@@ -97,13 +97,14 @@ listenLoop server = do
       line <- B.hGetLine h
       B.putStrLn $ (B.pack ">> ") `B.append` line
       
-      newServ <- callEvents server (parse line)
-      -- Call the listenLoop again.
-      -- Events can edit the server.
+      newServ <- foldM (\s f -> f s (parse line)) server internalEvents
+      
+      callEvents newServ (parse line)
+
       listenLoop newServ
     
--- Internal Events
-joinChans :: EventFunc
+-- Internal Events - They can edit the server
+joinChans :: IrcServer -> IrcMessage -> IO IrcServer
 joinChans server msg = do
   if code == "001"
     then do mapM (\chan -> write h $ "JOIN " `B.append` chan) (sChannels server)
@@ -112,25 +113,29 @@ joinChans server msg = do
   where h    = fromJust $ sSock server
         code = (fromJust $ mCode msg)
 
-pong :: EventFunc
+pong :: IrcServer -> IrcMessage -> IO IrcServer
 pong server msg = do
-  putStrLn "In pong function"
-  write h $ "PONG :" `B.append` pingMsg
-  return server
+  if code == "PING"
+    then do
+      putStrLn "In pong function"
+      write h $ "PONG :" `B.append` pingMsg
+      return server
+    else return server
+    
   where h       = fromJust $ sSock server
         pingMsg = fromJust $ mMsg msg
         code    = fromJust $ mCode msg
 
-events :: IrcServer -> IrcEvent -> IrcMessage -> IO IrcServer
+-- Event code
+events :: IrcServer -> IrcEvent -> IrcMessage -> IO ()
 events server event msg = do
-  putStrLn $ show events
-  
-  foldM eventCall server events
+  mapM eventCall events
+  return ()
   where comp   = (\a -> a `eqEvent` event)
         events = filter comp (sEvents server)
-        eventCall = (\s obj -> (eventFunc obj) s msg)
+        eventCall = (\obj -> (eventFunc obj) server msg)
 
-callEvents :: IrcServer -> IrcMessage -> IO IrcServer
+callEvents :: IrcServer -> IrcMessage -> IO ()
 callEvents server msg
   | fromJust (mCode msg) == "PRIVMSG"     = do
     events server (Privmsg undefined) msg
@@ -196,6 +201,7 @@ eventFunc (Kick    f) = f
 eventFunc (Quit    f) = f
 eventFunc (Nick    f) = f
 eventFunc (RawMsg  f) = f
+
 eventFuncD (Disconnect  f) = f
 
 -- |Sends a raw command to the server

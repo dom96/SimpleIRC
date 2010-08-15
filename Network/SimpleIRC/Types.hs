@@ -33,7 +33,7 @@ data IrcServer = IrcServer
   , sListenThread :: Maybe ThreadId
   } deriving Show
 
-type EventFunc = (IrcServer -> IrcMessage -> IO IrcServer)
+type EventFunc = (IrcServer -> IrcMessage -> IO ())
 
 -- When adding events here, remember add them in callEvents and in eventFunc
 -- AND also in the Show instance and Eq instance

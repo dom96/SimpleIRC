@@ -3,7 +3,7 @@ import Network.SimpleIRC
 import Data.Maybe
 import qualified Data.ByteString.Char8 as B
 
-privmsgTest :: IrcServer -> IrcMessage -> IO IrcServer
+privmsgTest :: EventFunc
 privmsgTest s msg = do
   putStrLn $ show $ privmsg
   putStrLn $ show $ privmsg == "|test"
@@ -11,38 +11,20 @@ privmsgTest s msg = do
     then do sendMsg s chan ("Works! -- "
                 `B.append` (B.pack $ show $ sChannels s) `B.append`
                 " -- " `B.append` (B.pack $ show $ sAddr s))
-            return s
-    else return s
+    else return ()
   where privmsg = fromJust $ mMsg msg
         chan    = fromJust $ mChan msg
-
-init1 :: IrcServer -> IrcMessage -> IO IrcServer
-init1 s msg
-  | (fromJust $ mMsg msg) == "|init" = do
-    let chans = sChannels s
-    return s {sChannels = "test" : chans}
-  | otherwise = return s
-
-init2 :: IrcServer -> IrcMessage -> IO IrcServer
-init2 s msg
-  | (fromJust $ mMsg msg) == "|init" = do
-    let chans = sChannels s
-    return s {sChannels = "test2" : chans}
-  | otherwise = return s
 
 quitMsg :: EventFunc
 quitMsg s msg
   | (fromJust $ mMsg msg) == "|quit" = do
     disconnect s "Bai!"
-    return s
-  | otherwise = return s
+  | otherwise = return ()
 
 onDisconnect :: IrcServer -> IO ()
 onDisconnect s = B.putStrLn $ "Disconnected from " `B.append` (sAddr s)
 
 events = [(Privmsg privmsgTest)
-         ,(Privmsg init1)
-         ,(Privmsg init2)
          ,(Privmsg quitMsg)
          ,(Disconnect onDisconnect)
          ]
@@ -53,7 +35,7 @@ freenode = IrcConfig
   "SimpleIRCBot" 
   "simpleirc" 
   "test 1" 
-  ["##XAMPP", "#()"] 
+  ["#()"] 
   events 
 
 ninthbit = IrcConfig 

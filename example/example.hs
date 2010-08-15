@@ -7,23 +7,21 @@ onMessage :: EventFunc
 onMessage s m
   | msg == "|hai" = do
     sendMsg s chan "hai thar!"
-    return s
   | B.isPrefixOf "|say" msg = do
     sendMsg s chan (B.drop 1 $ B.dropWhile (/= ' ') msg)
-    return s
-  | otherwise = return s
+  | otherwise = return ()
   where chan = fromJust $ mChan m
         msg = fromJust $ mMsg m
         
 events = [(Privmsg onMessage)]
 
 ninthbit = IrcConfig 
-  "irc.ninthbit.net" -- Address
+  "irc.freenode.net" -- Address
   6667 -- Port
   "SimpleIRCBot" -- Nickname
   "simpleirc"  -- Username
   "simple irc" -- Realname
-  ["#bots", "#programming"] -- Channels to join on connect
+  ["#()"] -- Channels to join on connect
   events -- Events to bind
 
 main = do
