@@ -17,17 +17,17 @@ and a list of events which will be called when certain commands are received fro
 You can specify 0 events, if for some unlikely reason you want your bot to not respond to anything.
 But in the more likely event when you do want to specify functions, you can do that simply by creating a function with the type of _EventFunc_
 
-  onMessage :: EventFunc
+    onMessage :: EventFunc
 
 EventFunc has the type of `(IrcServer -> IrcMessage -> IO ())`.
 For Haskell beginners that's a function which takes two arguments; an IrcServer and an IrcMessage, and which returns a IO ()
 
-  onMessage server msg
-    | m == "|hello" = do
-      sendMsg s chan "hello!"
-    | otherwise = return ()
-    where chan = fromJust $ mChan m
-          m    = mMsg msg
+    onMessage server msg
+      | m == "|hello" = do
+        sendMsg s chan "hello!"
+      | otherwise = return ()
+      where chan = fromJust $ mChan m
+            m    = mMsg msg
 
 This function will send "hello" to a channel whenever someone says "|hello".
 
