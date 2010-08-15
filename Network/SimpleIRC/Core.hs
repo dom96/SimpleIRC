@@ -31,7 +31,7 @@ import qualified Data.ByteString.Char8 as B
 
 -- TODO: Get rid of the debug putStrLn's
 
-internalEvents = [joinChans, pong]
+internalEvents = [joinChans, pong, onJoin]
 
 -- |Connects to a server
 connect :: IrcConfig       -- ^ Configuration
@@ -125,6 +125,19 @@ pong server msg = do
   where h       = fromJust $ sSock server
         pingMsg = fromJust $ mMsg msg
         code    = fromJust $ mCode msg
+
+onJoin :: IrcServer -> IrcMessage -> IO IrcServer
+onJoin server msg
+  | code == "JOIN" = do
+    let nick = fromJust $ mNick msg
+        chan  = fromJust $ mMsg msg
+    if nick == sNickname server
+      then return server { sChannels = chan:(sChannels server) }
+      else return server
+  | otherwise = return server
+  
+  where code = fromJust $ mCode msg
+
 
 -- Event code
 events :: IrcServer -> IrcEvent -> IrcMessage -> IO ()

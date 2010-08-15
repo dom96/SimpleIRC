@@ -53,7 +53,7 @@ parse2 (code:msg:_) =
 parse3 :: [B.ByteString] -> (B.ByteString -> IrcMessage)
 parse3 (first:code:msg:_) =
   let (nick, host, server) = parseFirst first
-  in IrcMessage nick host server (Just code) (Just msg) Nothing Nothing
+  in IrcMessage nick host server (Just code) (Just $ dropColon msg) Nothing Nothing
   
 parse5 :: [B.ByteString] -> (B.ByteString -> IrcMessage)
 parse5 (server:code:nick:chan:msg:_) =
@@ -63,7 +63,7 @@ parse5 (server:code:nick:chan:msg:_) =
 parseOther :: [B.ByteString] -> (B.ByteString -> IrcMessage)
 parseOther (server:code:nick:chan:other) =
   IrcMessage (Just nick) Nothing (Just server) (Just code)
-    Nothing (Just chan) (Just other)
+    (Just $ B.unwords other)  (Just chan) (Just other)
 
 smartSplit :: B.ByteString -> [B.ByteString]
 smartSplit txt
