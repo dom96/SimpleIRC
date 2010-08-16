@@ -12,6 +12,9 @@ import qualified Data.ByteString.Char8 as B
 import Control.Concurrent (ThreadId)
 import Control.Concurrent.Chan (Chan)
 import System.IO (Handle)
+import Data.Unique (Unique)
+import Data.Map (Map)
+
 
 data IrcConfig = IrcConfig
   { cAddr     :: String   -- ^ Server address to connect to
@@ -24,8 +27,9 @@ data IrcConfig = IrcConfig
   }
 
 data IrcCommand =
-    IrcAddEvent IrcEvent
-  | IrcChangeEvents [IrcEvent]
+    IrcAddEvent (Unique, IrcEvent)
+  | IrcChangeEvents (Map Unique IrcEvent)
+  | IrcRemoveEvent Unique
   
 data IrcServer = IrcServer
   { sAddr     :: B.ByteString
@@ -34,7 +38,7 @@ data IrcServer = IrcServer
   , sUsername :: B.ByteString
   , sRealname :: B.ByteString
   , sChannels :: [B.ByteString]
-  , sEvents   :: [IrcEvent]
+  , sEvents   :: Map Unique IrcEvent
   , sSock     :: Maybe Handle
   , sListenThread :: Maybe ThreadId
   , sCmdChan  :: Chan IrcCommand
@@ -44,6 +48,7 @@ type EventFunc = (IrcServer -> IrcMessage -> IO ())
 
 -- When adding events here, remember add them in callEvents and in eventFunc
 -- AND also in the Show instance and Eq instance
+
 data IrcEvent = 
     Privmsg EventFunc -- ^ PRIVMSG
   | Numeric EventFunc -- ^ Numeric, 001, 002, 372 etc.
@@ -57,7 +62,7 @@ data IrcEvent =
   | Quit EventFunc    -- ^ QUIT
   | Nick EventFunc    -- ^ NICK
   | RawMsg EventFunc  -- ^ This event gets called on every message received
-  | Disconnect (IrcServer -> IO ())
+  | Disconnect (IrcServer -> IO ()) 
   
   
 instance Show IrcEvent where

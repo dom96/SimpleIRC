@@ -10,6 +10,7 @@ onMessage1 s m
     changeEvents s [(Privmsg onMessage1)]
   | msg == "|set" = do
     changeEvents s events
+  | otherwise = return ()
   where msg = mMsg m
 
 onMessage :: EventFunc

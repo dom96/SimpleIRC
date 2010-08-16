@@ -30,7 +30,9 @@ import Control.Concurrent
 import Control.Concurrent.Chan
 import Network.SimpleIRC.Messages
 import Network.SimpleIRC.Types
+import Data.Unique
 import qualified Data.ByteString.Char8 as B
+import qualified Data.Map as Map
 
 -- TODO: Get rid of the debug putStrLn's
 
@@ -46,7 +48,7 @@ connect config threaded = do
   
   cmdChan <- newChan
   
-  let server = toServer config h cmdChan
+  server <- toServer config h cmdChan
   -- Initialize connection with the server
   greetServer server
   
@@ -66,12 +68,24 @@ disconnect server quitMsg = do
   return ()
   where h = fromJust $ sSock server
 
+genUnique :: IrcEvent -> IO (Unique, IrcEvent)
+genUnique e = do
+  u <- newUnique
+  return (u, e)
 
-toServer :: IrcConfig -> Handle -> Chan IrcCommand -> IrcServer
-toServer config h cmdChan = 
-  IrcServer (B.pack $ cAddr config) (cPort config) (B.pack $ cNick config) 
-            (B.pack $ cUsername config) (B.pack $ cRealname config) (map B.pack $ cChannels config) 
-            (cEvents config) (Just h) Nothing cmdChan
+genUniqueMap :: [IrcEvent] -> IO (Map.Map Unique IrcEvent)
+genUniqueMap events = do
+  uEvents <- mapM genUnique events
+  return $ Map.fromList uEvents
+
+toServer :: IrcConfig -> Handle -> Chan IrcCommand -> IO IrcServer
+toServer config h cmdChan = do
+  uniqueEvents <- genUniqueMap (cEvents config)
+
+  return $ IrcServer (B.pack $ cAddr config) (cPort config)
+              (B.pack $ cNick config) (B.pack $ cUsername config) 
+              (B.pack $ cRealname config) (map B.pack $ cChannels config) 
+              uniqueEvents (Just h) Nothing cmdChan
 
 greetServer :: IrcServer -> IO IrcServer
 greetServer server = do
@@ -92,7 +106,7 @@ execCmds server = do
   empty <- isEmptyChan $ sCmdChan server
   if not $ empty 
     then do cmd <- readChan $ sCmdChan server
-            case cmd of (IrcAddEvent event) -> return server {sEvents = event:(sEvents server)}
+            case cmd of (IrcAddEvent uEvent) -> return server {sEvents = Map.insert (fst uEvent) (snd uEvent) (sEvents server)}
                         (IrcChangeEvents events) -> return server {sEvents = events}
     else return server
 
@@ -105,10 +119,10 @@ listenLoop s = do
   if eof 
     then do
       let comp   = (\a -> a `eqEvent` (Disconnect undefined))
-          events = filter comp (sEvents server)
-          eventCall = (\obj -> (eventFuncD obj) server)
-      putStrLn $ show events
-      mapM eventCall events
+          events = Map.filter comp (sEvents server)
+          eventCall = (\obj -> (eventFuncD $ snd obj) server)
+      putStrLn $ show $ length $ Map.toList events
+      mapM eventCall (Map.toList events)
       return ()
     else do
       line <- B.hGetLine h
@@ -159,11 +173,11 @@ onJoin server msg
 -- Event code
 events :: IrcServer -> IrcEvent -> IrcMessage -> IO ()
 events server event msg = do
-  mapM eventCall events
+  mapM eventCall (Map.toList events)
   return ()
   where comp   = (\a -> a `eqEvent` event)
-        events = filter comp (sEvents server)
-        eventCall = (\obj -> (eventFunc obj) server msg)
+        events = Map.filter comp (sEvents server)
+        eventCall = (\obj -> (eventFunc $ snd obj) server msg)
 
 callEvents :: IrcServer -> IrcMessage -> IO ()
 callEvents server msg
@@ -246,13 +260,16 @@ sendMsg :: IrcServer
 sendMsg server chan msg =
   sendRaw server ("PRIVMSG " `B.append` chan `B.append` " :" `B.append` msg)
 
-addEvent :: IrcServer -> IrcEvent -> IO ()
+addEvent :: IrcServer -> IrcEvent -> IO Unique
 addEvent s event = do
-  writeChan (sCmdChan s) (IrcAddEvent event)
+  u <- newUnique
+  writeChan (sCmdChan s) (IrcAddEvent (u, event))
+  return u
 
 changeEvents :: IrcServer -> [IrcEvent] -> IO ()
 changeEvents s events = do
-  writeChan (sCmdChan s) (IrcChangeEvents events)
+  uniqueEvents <- genUniqueMap events
+  writeChan (sCmdChan s) (IrcChangeEvents uniqueEvents)
 
 write :: Handle -> B.ByteString -> IO ()
 write h msg = do
