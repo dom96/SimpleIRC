@@ -3,12 +3,14 @@ module Network.SimpleIRC.Types
     -- * Datatypes
     IrcConfig(..)
   , IrcServer(..)
+  , IrcCommand(..)
   , IrcEvent(..)
   , EventFunc
   , IrcMessage(..)
   ) where
 import qualified Data.ByteString.Char8 as B
 import Control.Concurrent (ThreadId)
+import Control.Concurrent.Chan (Chan)
 import System.IO (Handle)
 
 data IrcConfig = IrcConfig
@@ -21,6 +23,10 @@ data IrcConfig = IrcConfig
   , cEvents   :: [IrcEvent] -- ^ Events to bind
   }
 
+data IrcCommand =
+    IrcAddEvent IrcEvent
+  | IrcChangeEvents [IrcEvent]
+  
 data IrcServer = IrcServer
   { sAddr     :: B.ByteString
   , sPort     :: Int
@@ -31,7 +37,8 @@ data IrcServer = IrcServer
   , sEvents   :: [IrcEvent]
   , sSock     :: Maybe Handle
   , sListenThread :: Maybe ThreadId
-  } deriving Show
+  , sCmdChan  :: Chan IrcCommand
+  }
 
 type EventFunc = (IrcServer -> IrcMessage -> IO ())
 

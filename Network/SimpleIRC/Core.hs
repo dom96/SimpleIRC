@@ -17,6 +17,8 @@ module Network.SimpleIRC.Core
   , disconnect
   , sendRaw
   , sendMsg
+  , addEvent
+  , changeEvents
   ) where
   
 import Network
@@ -25,6 +27,7 @@ import Data.Maybe
 import Data.Char (isNumber)
 import Control.Monad
 import Control.Concurrent
+import Control.Concurrent.Chan
 import Network.SimpleIRC.Messages
 import Network.SimpleIRC.Types
 import qualified Data.ByteString.Char8 as B
@@ -41,7 +44,9 @@ connect config threaded = do
   h <- connectTo (cAddr config) (PortNumber $ fromIntegral $ cPort config)
   hSetBuffering h NoBuffering
   
-  let server = toServer config h
+  cmdChan <- newChan
+  
+  let server = toServer config h cmdChan
   -- Initialize connection with the server
   greetServer server
   
@@ -62,11 +67,11 @@ disconnect server quitMsg = do
   where h = fromJust $ sSock server
 
 
-toServer :: IrcConfig -> Handle -> IrcServer
-toServer config h = 
+toServer :: IrcConfig -> Handle -> Chan IrcCommand -> IrcServer
+toServer config h cmdChan = 
   IrcServer (B.pack $ cAddr config) (cPort config) (B.pack $ cNick config) 
             (B.pack $ cUsername config) (B.pack $ cRealname config) (map B.pack $ cChannels config) 
-            (cEvents config) (Just h) Nothing  
+            (cEvents config) (Just h) Nothing cmdChan
 
 greetServer :: IrcServer -> IO IrcServer
 greetServer server = do
@@ -81,8 +86,20 @@ greetServer server = do
         addr = sAddr server
         h    = fromJust $ sSock server
 
+-- TODO: I think this should execute all commands that are available.
+execCmds :: IrcServer -> IO IrcServer
+execCmds server = do
+  empty <- isEmptyChan $ sCmdChan server
+  if not $ empty 
+    then do cmd <- readChan $ sCmdChan server
+            case cmd of (IrcAddEvent event) -> return server {sEvents = event:(sEvents server)}
+                        (IrcChangeEvents events) -> return server {sEvents = events}
+    else return server
+
 listenLoop :: IrcServer -> IO ()
-listenLoop server = do
+listenLoop s = do
+  server <- execCmds s
+
   let h = fromJust $ sSock server
   eof <- hIsEOF h
   if eof 
@@ -228,6 +245,14 @@ sendMsg :: IrcServer
            -> IO ()
 sendMsg server chan msg =
   sendRaw server ("PRIVMSG " `B.append` chan `B.append` " :" `B.append` msg)
+
+addEvent :: IrcServer -> IrcEvent -> IO ()
+addEvent s event = do
+  writeChan (sCmdChan s) (IrcAddEvent event)
+
+changeEvents :: IrcServer -> [IrcEvent] -> IO ()
+changeEvents s events = do
+  writeChan (sCmdChan s) (IrcChangeEvents events)
 
 write :: Handle -> B.ByteString -> IO ()
 write h msg = do
