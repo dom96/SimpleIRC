@@ -3,7 +3,7 @@ module Network.SimpleIRC.Types
     -- * Datatypes
     IrcConfig(..)
   , IrcServer(..)
-  , IrcCommand(..)
+  , SIrcCommand(..)
   , IrcEvent(..)
   , EventFunc
   , IrcMessage(..)
@@ -26,10 +26,10 @@ data IrcConfig = IrcConfig
   , cEvents   :: [IrcEvent] -- ^ Events to bind
   }
 
-data IrcCommand =
-    IrcAddEvent (Unique, IrcEvent)
-  | IrcChangeEvents (Map Unique IrcEvent)
-  | IrcRemoveEvent Unique
+data SIrcCommand =
+    SIrcAddEvent (Unique, IrcEvent)
+  | SIrcChangeEvents (Map Unique IrcEvent)
+  | SIrcRemoveEvent Unique
   
 data IrcServer = IrcServer
   { sAddr     :: B.ByteString
@@ -41,7 +41,7 @@ data IrcServer = IrcServer
   , sEvents   :: Map Unique IrcEvent
   , sSock     :: Maybe Handle
   , sListenThread :: Maybe ThreadId
-  , sCmdChan  :: Chan IrcCommand
+  , sCmdChan  :: Chan SIrcCommand
   }
 
 type EventFunc = (IrcServer -> IrcMessage -> IO ())

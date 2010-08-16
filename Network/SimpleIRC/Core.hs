@@ -78,7 +78,7 @@ genUniqueMap events = do
   uEvents <- mapM genUnique events
   return $ Map.fromList uEvents
 
-toServer :: IrcConfig -> Handle -> Chan IrcCommand -> IO IrcServer
+toServer :: IrcConfig -> Handle -> Chan SIrcCommand -> IO IrcServer
 toServer config h cmdChan = do
   uniqueEvents <- genUniqueMap (cEvents config)
 
@@ -106,8 +106,9 @@ execCmds server = do
   empty <- isEmptyChan $ sCmdChan server
   if not $ empty 
     then do cmd <- readChan $ sCmdChan server
-            case cmd of (IrcAddEvent uEvent) -> return server {sEvents = Map.insert (fst uEvent) (snd uEvent) (sEvents server)}
-                        (IrcChangeEvents events) -> return server {sEvents = events}
+            case cmd of (SIrcAddEvent uEvent) -> return server {sEvents = Map.insert (fst uEvent) (snd uEvent) (sEvents server)}
+                        (SIrcChangeEvents events) -> return server {sEvents = events}
+                        (SIrcRemoveEvent key) -> return server {sEvents = Map.delete key (sEvents server)}
     else return server
 
 listenLoop :: IrcServer -> IO ()
@@ -116,6 +117,7 @@ listenLoop s = do
 
   let h = fromJust $ sSock server
   eof <- hIsEOF h
+  -- If EOF then we are disconnected
   if eof 
     then do
       let comp   = (\a -> a `eqEvent` (Disconnect undefined))
@@ -263,13 +265,17 @@ sendMsg server chan msg =
 addEvent :: IrcServer -> IrcEvent -> IO Unique
 addEvent s event = do
   u <- newUnique
-  writeChan (sCmdChan s) (IrcAddEvent (u, event))
+  writeChan (sCmdChan s) (SIrcAddEvent (u, event))
   return u
 
 changeEvents :: IrcServer -> [IrcEvent] -> IO ()
 changeEvents s events = do
   uniqueEvents <- genUniqueMap events
-  writeChan (sCmdChan s) (IrcChangeEvents uniqueEvents)
+  writeChan (sCmdChan s) (SIrcChangeEvents uniqueEvents)
+
+remEvent :: IrcServer -> Unique -> IO Unique
+remEvent s uniq = do
+  writeChan (sCmdChan s) (SIrcRemoveEvent uniq)
 
 write :: Handle -> B.ByteString -> IO ()
 write h msg = do
