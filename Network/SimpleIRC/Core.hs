@@ -273,7 +273,7 @@ changeEvents s events = do
   uniqueEvents <- genUniqueMap events
   writeChan (sCmdChan s) (SIrcChangeEvents uniqueEvents)
 
-remEvent :: IrcServer -> Unique -> IO Unique
+remEvent :: IrcServer -> Unique -> IO ()
 remEvent s uniq = do
   writeChan (sCmdChan s) (SIrcRemoveEvent uniq)
 

@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveDataTypeable #-}
 module Network.SimpleIRC.Types
   ( 
     -- * Datatypes
@@ -14,7 +15,7 @@ import Control.Concurrent.Chan (Chan)
 import System.IO (Handle)
 import Data.Unique (Unique)
 import Data.Map (Map)
-
+import Data.Typeable
 
 data IrcConfig = IrcConfig
   { cAddr     :: String   -- ^ Server address to connect to
@@ -89,4 +90,4 @@ data IrcMessage = IrcMessage
   , mChan   :: Maybe B.ByteString
   , mOther  :: Maybe [B.ByteString]
   , mRaw    :: B.ByteString
-  } deriving Show
+  } deriving (Show, Typeable)
