@@ -43,6 +43,7 @@ data IrcServer = IrcServer
   , sSock     :: Maybe Handle
   , sListenThread :: Maybe ThreadId
   , sCmdChan  :: Chan SIrcCommand
+  , sDebug    :: Bool
   }
 
 type EventFunc = (IrcServer -> IrcMessage -> IO ())

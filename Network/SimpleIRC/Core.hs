@@ -34,21 +34,20 @@ import Data.Unique
 import qualified Data.ByteString.Char8 as B
 import qualified Data.Map as Map
 
--- TODO: Get rid of the debug putStrLn's
-
 internalEvents = [joinChans, pong, onJoin]
 
 -- |Connects to a server
 connect :: IrcConfig       -- ^ Configuration
            -> Bool         -- ^ Run in a new thread
+           -> Bool         -- ^ Print debug messages
            -> IO IrcServer -- ^ IrcServer instance
-connect config threaded = do
+connect config threaded debug = do
   h <- connectTo (cAddr config) (PortNumber $ fromIntegral $ cPort config)
   hSetBuffering h NoBuffering
   
   cmdChan <- newChan
   
-  server <- toServer config h cmdChan
+  server <- toServer config h cmdChan debug
   -- Initialize connection with the server
   greetServer server
   
@@ -64,7 +63,7 @@ disconnect :: IrcServer
               -> B.ByteString -- ^ Quit message
               -> IO ()
 disconnect server quitMsg = do
-  write h $ "QUIT :" `B.append` quitMsg
+  write server $ "QUIT :" `B.append` quitMsg
   return ()
   where h = fromJust $ sSock server
 
@@ -78,19 +77,19 @@ genUniqueMap events = do
   uEvents <- mapM genUnique events
   return $ Map.fromList uEvents
 
-toServer :: IrcConfig -> Handle -> Chan SIrcCommand -> IO IrcServer
-toServer config h cmdChan = do
+toServer :: IrcConfig -> Handle -> Chan SIrcCommand -> Bool -> IO IrcServer
+toServer config h cmdChan debug = do
   uniqueEvents <- genUniqueMap (cEvents config)
 
   return $ IrcServer (B.pack $ cAddr config) (cPort config)
               (B.pack $ cNick config) (B.pack $ cUsername config) 
               (B.pack $ cRealname config) (map B.pack $ cChannels config) 
-              uniqueEvents (Just h) Nothing cmdChan
+              uniqueEvents (Just h) Nothing cmdChan debug
 
 greetServer :: IrcServer -> IO IrcServer
 greetServer server = do
-  write h $ "NICK " `B.append` nick
-  write h $ "USER " `B.append` user `B.append` " " `B.append`
+  write server $ "NICK " `B.append` nick
+  write server $ "USER " `B.append` user `B.append` " " `B.append`
       user `B.append` " " `B.append` addr `B.append` " :" `B.append` real
   
   return server
@@ -98,7 +97,6 @@ greetServer server = do
         user = sUsername server
         real = sRealname server
         addr = sAddr server
-        h    = fromJust $ sSock server
 
 -- TODO: I think this should execute all commands that are available.
 execCmds :: IrcServer -> IO IrcServer
@@ -123,12 +121,12 @@ listenLoop s = do
       let comp   = (\a -> a `eqEvent` (Disconnect undefined))
           events = Map.filter comp (sEvents server)
           eventCall = (\obj -> (eventFuncD $ snd obj) server)
-      putStrLn $ show $ length $ Map.toList events
+      debugWrite s $ B.pack $ show $ length $ Map.toList events
       mapM eventCall (Map.toList events)
       return ()
     else do
       line <- B.hGetLine h
-      B.putStrLn $ (B.pack ">> ") `B.append` line
+      debugWrite s $ (B.pack ">> ") `B.append` line
       
       newServ <- foldM (\s f -> f s (parse line)) server internalEvents
       
@@ -140,7 +138,7 @@ listenLoop s = do
 joinChans :: IrcServer -> IrcMessage -> IO IrcServer
 joinChans server msg = do
   if code == "001"
-    then do mapM (\chan -> write h $ "JOIN " `B.append` chan) (sChannels server)
+    then do mapM (\chan -> write server $ "JOIN " `B.append` chan) (sChannels server)
             return server {sChannels = []}
     else return server
   where h    = fromJust $ sSock server
@@ -150,8 +148,7 @@ pong :: IrcServer -> IrcMessage -> IO IrcServer
 pong server msg = do
   if code == "PING"
     then do
-      putStrLn "In pong function"
-      write h $ "PONG :" `B.append` pingMsg
+      write server $ "PONG :" `B.append` pingMsg
       return server
     else return server
     
@@ -252,7 +249,7 @@ eventFuncD (Disconnect  f) = f
 
 -- |Sends a raw command to the server
 sendRaw :: IrcServer -> B.ByteString -> IO ()
-sendRaw server msg = write (fromJust $ sSock server) msg
+sendRaw server msg = write server msg
 
 -- |Sends a message to a channel
 sendMsg :: IrcServer 
@@ -277,7 +274,14 @@ remEvent :: IrcServer -> Unique -> IO ()
 remEvent s uniq = do
   writeChan (sCmdChan s) (SIrcRemoveEvent uniq)
 
-write :: Handle -> B.ByteString -> IO ()
-write h msg = do
-  B.putStrLn $ "<< " `B.append` msg `B.append` "\\r\\n"
+debugWrite :: IrcServer -> B.ByteString -> IO ()
+debugWrite s msg = do
+  if sDebug s
+    then B.putStrLn msg
+    else return ()
+
+write :: IrcServer -> B.ByteString -> IO ()
+write s msg = do
+  debugWrite s $ "<< " `B.append` msg `B.append` "\\r\\n"
   B.hPutStr h (msg `B.append` "\r\n")
+  where h = fromJust $ sSock s
