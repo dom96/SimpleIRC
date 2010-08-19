@@ -9,6 +9,9 @@ You can then use `cabal install` to install.
 ## Example
 For an example on how to use the library see example/example.hs and tests/testbot.hs
 
+I'm also creating an IRC Bot which uses this library. 
+[Take a look at it](http://github.com/dom96/ElysiaBot "Take a look at it") for more practical usage of the lib.
+
 ### Usage
 The first step is to create an IrcConfig datatype. You have to specify the address of the server,
 the server port, nickname, username, realname, list of channels to join when connected, 

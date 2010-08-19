@@ -63,6 +63,7 @@ data IrcEvent =
   | Kick EventFunc    -- ^ KICK
   | Quit EventFunc    -- ^ QUIT
   | Nick EventFunc    -- ^ NICK
+  | Notice EventFunc  -- ^ NOTICE
   | RawMsg EventFunc  -- ^ This event gets called on every message received
   | Disconnect (IrcServer -> IO ()) 
   
@@ -79,6 +80,7 @@ instance Show IrcEvent where
   show (Kick    _) = "IrcEvent - Kick"
   show (Quit    _) = "IrcEvent - Quit"
   show (Nick    _) = "IrcEvent - Nick"
+  show (Notice  _) = "IrcEvent - Notice"
   show (RawMsg  _) = "IrcEvent - RawMsg"
   show (Disconnect  _) = "IrcEvent - Disconnect"
   
@@ -92,3 +94,6 @@ data IrcMessage = IrcMessage
   , mOther  :: Maybe [B.ByteString]
   , mRaw    :: B.ByteString
   } deriving (Show, Typeable)
+  
+  
+   

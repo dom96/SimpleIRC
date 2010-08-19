@@ -210,6 +210,9 @@ callEvents server msg
   | mCode msg == "NICK"        = do
     events server (Nick undefined) msg
 
+  | mCode msg == "NOTICE"      = do
+    events server (Notice undefined) msg
+
   | B.all isNumber (mCode msg) = do
     events server (Numeric undefined) msg
   
@@ -227,6 +230,7 @@ callEvents server msg
 (Kick    _) `eqEvent` (Kick    _) = True
 (Quit    _) `eqEvent` (Quit    _) = True
 (Nick    _) `eqEvent` (Nick    _) = True
+(Notice  _) `eqEvent` (Notice  _) = True
 (RawMsg  _) `eqEvent` (RawMsg  _) = True
 (Disconnect  _) `eqEvent` (Disconnect  _) = True
 _ `eqEvent` _                     = False
@@ -243,6 +247,7 @@ eventFunc (Invite  f) = f
 eventFunc (Kick    f) = f
 eventFunc (Quit    f) = f
 eventFunc (Nick    f) = f
+eventFunc (Notice  f) = f
 eventFunc (RawMsg  f) = f
 
 eventFuncD (Disconnect  f) = f
@@ -258,6 +263,12 @@ sendMsg :: IrcServer
            -> IO ()
 sendMsg server chan msg =
   sendRaw server ("PRIVMSG " `B.append` chan `B.append` " :" `B.append` msg)
+
+sendCmd :: IrcServer
+           -> Command -- Command to send
+           -> IO ()
+sendCmd server cmd =
+  sendRaw server (showCommand cmd)
 
 addEvent :: IrcServer -> IrcEvent -> IO Unique
 addEvent s event = do
