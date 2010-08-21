@@ -42,6 +42,9 @@ connect :: IrcConfig       -- ^ Configuration
            -> Bool         -- ^ Print debug messages
            -> IO IrcServer -- ^ IrcServer instance
 connect config threaded debug = do
+  if debug
+    then B.putStrLn $ "Connecting to " `B.append` (B.pack $ cAddr config)
+    else return ()
   h <- connectTo (cAddr config) (PortNumber $ fromIntegral $ cPort config)
   hSetBuffering h NoBuffering
   

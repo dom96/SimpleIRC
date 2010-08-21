@@ -32,6 +32,7 @@ data Command = Command
   | MQuit    B.ByteString                           -- ^ QUIT :msg
   | MNick    B.ByteString                           -- ^ NICK newnick
   | MNotice  B.ByteString B.ByteString              -- ^ NOTICE usr/#chan :msg
+  | MAction  B.ByteString B.ByteString              -- ^ PRIVMSG usr/#chan :ACTION msg
   deriving (Eq, Read, Show)
 
 -- |Parse a raw IRC message
@@ -125,4 +126,6 @@ showCommand (MQuit    msg)                  = "QUIT :" `B.append` msg
 showCommand (MNick    nick)                 = "NICK " `B.append` nick
 showCommand (MNotice  chan msg)             = "NOTICE " `B.append` chan `B.append`
                                               " :" `B.append` msg
-
+showCommand (MAction  chan msg)             = showCommand $ MPrivmsg chan
+                                              ("\x01 ACTION " `B.append` msg
+                                              `B.append` "\x01")
