@@ -103,7 +103,8 @@ takeCarriageRet xs =
     else xs
 
 showCommand :: Command -> B.ByteString
-showCommand (MPrivmsg chan msg)             = "PRIVMSG " `B.append` msg
+showCommand (MPrivmsg chan msg)             = "PRIVMSG " `B.append` chan `B.append`
+                                              " :" `B.append` msg
 showCommand (MJoin    chan (Just key))      = "JOIN " `B.append` chan `B.append` 
                                               " " `B.append` key
 showCommand (MJoin    chan Nothing)         = "JOIN " `B.append` chan

@@ -260,13 +260,18 @@ sendRaw :: IrcServer -> B.ByteString -> IO ()
 sendRaw server msg = write server msg
 
 -- |Sends a message to a channel
+-- |
+-- |Please note: As of now this function does provide flood control.
+-- |So be careful.
 sendMsg :: IrcServer 
            -> B.ByteString -- ^ Channel
            -> B.ByteString -- ^ Message
            -> IO ()
-sendMsg server chan msg =
-  sendRaw server ("PRIVMSG " `B.append` chan `B.append` " :" `B.append` msg)
-
+sendMsg server chan msg = do
+  mapM (s) lins
+  return ()
+  where lins = B.lines msg
+        s m = sendCmd server (MPrivmsg chan m)
 sendCmd :: IrcServer
            -> Command -- Command to send
            -> IO ()
