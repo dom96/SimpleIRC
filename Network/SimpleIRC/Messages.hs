@@ -1,3 +1,14 @@
+-- |
+-- Module : Network.SimpleIRC.Core
+-- Copyright : (c) Dominik Picheta 2010
+-- License : BSD3
+--
+-- Maintainer : morfeusz8@gmail.com
+-- Stability : Alpha
+-- Portability : portable
+--
+-- Messages module
+--
 {-# LANGUAGE OverloadedStrings #-}
 module Network.SimpleIRC.Messages 
   ( Command(..)

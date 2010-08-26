@@ -5,7 +5,7 @@
 --
 -- Maintainer : morfeusz8@gmail.com
 -- Stability : Alpha
--- Portability : non-portable
+-- Portability : portable
 --
 -- Core module
 --
