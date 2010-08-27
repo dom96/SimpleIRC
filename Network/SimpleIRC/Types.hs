@@ -71,7 +71,8 @@ data IrcEvent =
   | Nick EventFunc    -- ^ NICK
   | Notice EventFunc  -- ^ NOTICE
   | RawMsg EventFunc  -- ^ This event gets called on every message received
-  | Disconnect (IrcServer -> IO ()) 
+  | Disconnect (IrcServer -> IO ()) -- ^ This event gets called whenever the
+                                    --   connection with the server is dropped
   
   
 instance Show IrcEvent where

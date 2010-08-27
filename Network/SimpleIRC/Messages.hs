@@ -43,7 +43,7 @@ data Command = Command
   | MQuit    B.ByteString                           -- ^ QUIT :msg
   | MNick    B.ByteString                           -- ^ NICK newnick
   | MNotice  B.ByteString B.ByteString              -- ^ NOTICE usr/#chan :msg
-  | MAction  B.ByteString B.ByteString              -- ^ PRIVMSG usr/#chan :ACTION msg
+  | MAction  B.ByteString B.ByteString              -- ^ PRIVMSG usr/#chan :\\x01ACTION msg\\x01
   deriving (Eq, Read, Show)
 
 -- |Parse a raw IRC message

@@ -7,8 +7,7 @@
 -- Stability : Alpha
 -- Portability : portable
 --
--- Core module
---
+-- For information on how to use this library please take a look at the readme file on github, <http://github.com/dom96/SimpleIRC#readme>.
 {-# LANGUAGE OverloadedStrings #-}
 module Network.SimpleIRC.Core
   ( 
@@ -20,6 +19,7 @@ module Network.SimpleIRC.Core
   , sendCmd
   , addEvent
   , changeEvents
+  , remEvent
   , defaultConfig
   ) where
   
@@ -282,9 +282,9 @@ sendRaw :: IrcServer -> B.ByteString -> IO ()
 sendRaw server msg = write server msg
 
 -- |Sends a message to a channel
--- |
+
 -- |Please note: As of now this function doesn't provide flood control.
--- |So be careful.
+-- So be careful.
 sendMsg :: IrcServer 
            -> B.ByteString -- ^ Channel
            -> B.ByteString -- ^ Message

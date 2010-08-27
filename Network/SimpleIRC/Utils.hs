@@ -19,7 +19,7 @@ import Network.SimpleIRC.Types
 import qualified Data.ByteString.Char8 as B
 import Data.Maybe (fromJust)
   
--- |If the IrcMessage was sent directly to you returns the nick else the channel.
+-- |If the IrcMessage was sent directly to you returns the nick otherwise the channel.
 getChan :: IrcServer -> IrcMessage -> B.ByteString
 getChan s m =
   if sNickname s == chan
