@@ -17,8 +17,10 @@ module Network.SimpleIRC.Core
   , disconnect
   , sendRaw
   , sendMsg
+  , sendCmd
   , addEvent
   , changeEvents
+  , defaultConfig
   ) where
   
 import Network
@@ -30,18 +32,23 @@ import Control.Concurrent
 import Control.Concurrent.Chan
 import Network.SimpleIRC.Messages
 import Network.SimpleIRC.Types
+import Network.SimpleIRC.Utils
 import Data.Unique
+import System.IO.Error
+import Data.Time
+import System.Locale
 import qualified Data.ByteString.Char8 as B
 import qualified Data.Map as Map
 
-internalEvents = [joinChans, pong, onJoin]
+internalEvents     = [joinChans, pong, onJoin]
+internalNormEvents = [Privmsg ctcpHandler]
 
 -- |Connects to a server
 connect :: IrcConfig       -- ^ Configuration
            -> Bool         -- ^ Run in a new thread
            -> Bool         -- ^ Print debug messages
-           -> IO IrcServer -- ^ IrcServer instance
-connect config threaded debug = do
+           -> IO (Either IOError IrcServer) -- ^ IrcServer instance
+connect config threaded debug = try $ do
   if debug
     then B.putStrLn $ "Connecting to " `B.append` (B.pack $ cAddr config)
     else return ()
@@ -82,12 +89,13 @@ genUniqueMap events = do
 
 toServer :: IrcConfig -> Handle -> Chan SIrcCommand -> Bool -> IO IrcServer
 toServer config h cmdChan debug = do
-  uniqueEvents <- genUniqueMap (cEvents config)
+  uniqueEvents <- genUniqueMap $ internalNormEvents ++ (cEvents config)
 
   return $ IrcServer (B.pack $ cAddr config) (cPort config)
               (B.pack $ cNick config) (B.pack $ cUsername config) 
               (B.pack $ cRealname config) (map B.pack $ cChannels config) 
               uniqueEvents (Just h) Nothing cmdChan debug
+              (cCTCPVersion config) (cCTCPTime config)
 
 greetServer :: IrcServer -> IO IrcServer
 greetServer server = do
@@ -171,7 +179,21 @@ onJoin server msg
   
   where code = mCode msg
 
-
+-- Internal normal events
+ctcpHandler :: EventFunc
+ctcpHandler server iMsg
+  | msg == "\x01VERSION\x01" =
+    sendCmd server
+      (MNotice chan ("\x01VERSION " `B.append`
+        (B.pack $ sCTCPVersion server) `B.append` "\x01"))
+  | msg == "\x01TIME\x01" = do
+    time <- sCTCPTime server
+    sendCmd server
+      (MNotice chan ("\x01TIME " `B.append`
+        (B.pack time) `B.append` "\x01"))
+  | otherwise = return ()
+  where msg  = mMsg iMsg
+        chan = getChan server iMsg
 -- Event code
 events :: IrcServer -> IrcEvent -> IrcMessage -> IO ()
 events server event msg = do
@@ -261,7 +283,7 @@ sendRaw server msg = write server msg
 
 -- |Sends a message to a channel
 -- |
--- |Please note: As of now this function does provide flood control.
+-- |Please note: As of now this function doesn't provide flood control.
 -- |So be careful.
 sendMsg :: IrcServer 
            -> B.ByteString -- ^ Channel
@@ -304,3 +326,15 @@ write s msg = do
   debugWrite s $ "<< " `B.append` msg `B.append` "\\r\\n"
   B.hPutStr h (msg `B.append` "\r\n")
   where h = fromJust $ sSock s
+  
+
+defaultConfig = IrcConfig
+  { cPort     = 6667
+  , cUsername = "simpleirc"
+  , cRealname = "SimpleIRC Bot"
+  , cChannels = []
+  , cEvents   = []
+  , cCTCPVersion = "SimpleIRC v0.1"
+  , cCTCPTime    =  getZonedTime >>= 
+    (\t -> return $ formatTime defaultTimeLocale "%c" t)
+  }

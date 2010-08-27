@@ -25,7 +25,10 @@ data IrcConfig = IrcConfig
   , cRealname :: String   -- ^ Realname
   , cChannels :: [String]   -- ^ List of channels to join on connect
   , cEvents   :: [IrcEvent] -- ^ Events to bind
+  , cCTCPVersion :: String  -- ^ What to send on CTCP VERSION
+  , cCTCPTime    :: IO String  -- ^ What to send on CTCP TIME
   }
+
 
 data SIrcCommand =
     SIrcAddEvent (Unique, IrcEvent)
@@ -33,17 +36,20 @@ data SIrcCommand =
   | SIrcRemoveEvent Unique
   
 data IrcServer = IrcServer
-  { sAddr     :: B.ByteString
-  , sPort     :: Int
-  , sNickname :: B.ByteString
-  , sUsername :: B.ByteString
-  , sRealname :: B.ByteString
-  , sChannels :: [B.ByteString]
-  , sEvents   :: Map Unique IrcEvent
-  , sSock     :: Maybe Handle
+  { sAddr         :: B.ByteString
+  , sPort         :: Int
+  , sNickname     :: B.ByteString
+  , sUsername     :: B.ByteString
+  , sRealname     :: B.ByteString
+  , sChannels     :: [B.ByteString]
+  , sEvents       :: Map Unique IrcEvent
+  , sSock         :: Maybe Handle
   , sListenThread :: Maybe ThreadId
-  , sCmdChan  :: Chan SIrcCommand
-  , sDebug    :: Bool
+  , sCmdChan      :: Chan SIrcCommand
+  , sDebug        :: Bool
+  -- Other info
+  , sCTCPVersion  :: String
+  , sCTCPTime     :: IO String
   }
 
 type EventFunc = (IrcServer -> IrcMessage -> IO ())

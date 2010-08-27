@@ -39,7 +39,7 @@ freenode = IrcConfig
   events 
 
 ninthbit = IrcConfig 
-  "irc.ninthbit.net" 
+  "irc.ninthbit1212.net" 
   6667 
   "SimpleIRCBot" 
   "simpleirc" 
@@ -48,5 +48,6 @@ ninthbit = IrcConfig
   events 
 
 main = do
-  connect freenode True
-  connect ninthbit False
+  --connect freenode True True
+  ret <- connect ninthbit False True
+  either (\e -> putStrLn $ "Unable to connect: " ++ (show e)) (\_ -> return ()) ret
