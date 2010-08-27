@@ -4,7 +4,7 @@
 -- License : BSD3
 --
 -- Maintainer : morfeusz8@gmail.com
--- Stability : Alpha
+-- Stability : provisional
 -- Portability : portable
 --
 -- Messages module

@@ -4,7 +4,7 @@
 -- License : BSD3
 --
 -- Maintainer : morfeusz8@gmail.com
--- Stability : Alpha
+-- Stability : provisional
 -- Portability : portable
 --
 -- For information on how to use this library please take a look at the readme file on github, <http://github.com/dom96/SimpleIRC#readme>.
