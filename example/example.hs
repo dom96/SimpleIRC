@@ -9,7 +9,7 @@ onMessage s m
     sendMsg s chan "hai thar!"
   | B.isPrefixOf "|say" msg = do
     sendMsg s chan (B.drop 1 $ B.dropWhile (/= ' ') msg)
-  | otherwise = return ()
+  | otherwise = putStrLn $ show m
   where chan = fromJust $ mChan m
         msg = mMsg m
         

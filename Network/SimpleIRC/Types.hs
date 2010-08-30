@@ -93,6 +93,7 @@ instance Show IrcEvent where
   
 data IrcMessage = IrcMessage
   { mNick   :: Maybe B.ByteString
+  , mUser   :: Maybe B.ByteString
   , mHost   :: Maybe B.ByteString
   , mServer :: Maybe B.ByteString
   , mCode   :: B.ByteString
