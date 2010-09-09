@@ -11,8 +11,11 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Network.SimpleIRC.Core
   ( 
+    -- * Types
+    MIrc 
+  
     -- * Functions
-    connect
+  , connect
   , disconnect
   , sendRaw
   , sendMsg
@@ -30,6 +33,7 @@ import Data.Char (isNumber)
 import Control.Monad
 import Control.Concurrent
 import Control.Concurrent.Chan
+import Control.Concurrent.MVar
 import Network.SimpleIRC.Messages
 import Network.SimpleIRC.Types
 import Network.SimpleIRC.Utils
@@ -43,11 +47,13 @@ import qualified Data.Map as Map
 internalEvents     = [joinChans, pong, onJoin]
 internalNormEvents = [Privmsg ctcpHandler]
 
+type MIrc = MVar IrcServer
+
 -- |Connects to a server
 connect :: IrcConfig       -- ^ Configuration
            -> Bool         -- ^ Run in a new thread
            -> Bool         -- ^ Print debug messages
-           -> IO (Either IOError IrcServer) -- ^ IrcServer instance
+           -> IO (Either IOError MIrc) -- ^ IrcServer instance
 connect config threaded debug = try $ do
   if debug
     then B.putStrLn $ "Connecting to " `B.append` (B.pack $ cAddr config)
@@ -61,21 +67,29 @@ connect config threaded debug = try $ do
   -- Initialize connection with the server
   greetServer server
   
+  -- Create a new MVar
+  res <- newMVar server
+  
   -- Start listening
   if threaded
-    then do listenId <- forkIO (listenLoop server)
-            return server {sListenThread = Just listenId}
-    else do listenLoop server
-            return server
-    
+    then do listenId <- forkIO (listenLoop res)
+            modifyMVar_ res (\srv -> return $ srv {sListenThread = Just listenId}) 
+            return res
+    else do listenLoop res
+            return res
+  
+  
 -- |Sends a QUIT command to the server.
-disconnect :: IrcServer
+disconnect :: MIrc
               -> B.ByteString -- ^ Quit message
               -> IO ()
 disconnect server quitMsg = do
-  write server $ "QUIT :" `B.append` quitMsg
+  s <- readMVar server
+  
+  let h = fromJust $ sSock s
+  write s $ "QUIT :" `B.append` quitMsg
   return ()
-  where h = fromJust $ sSock server
+  
 
 genUnique :: IrcEvent -> IO (Unique, IrcEvent)
 genUnique e = do
@@ -120,30 +134,42 @@ execCmds server = do
                         (SIrcRemoveEvent key) -> return server {sEvents = Map.delete key (sEvents server)}
     else return server
 
-listenLoop :: IrcServer -> IO ()
+listenLoop :: MIrc -> IO ()
 listenLoop s = do
-  server <- execCmds s
+  res <- takeMVar s
+  server <- execCmds res
+  putMVar s server -- Put the MVar back.
 
   let h = fromJust $ sSock server
   eof <- hIsEOF h
+  
   -- If EOF then we are disconnected
   if eof 
     then do
       let comp   = (\a -> a `eqEvent` (Disconnect undefined))
           events = Map.filter comp (sEvents server)
           eventCall = (\obj -> (eventFuncD $ snd obj) server)
-      debugWrite s $ B.pack $ show $ length $ Map.toList events
+      debugWrite server $ B.pack $ show $ length $ Map.toList events
       mapM eventCall (Map.toList events)
+
       return ()
     else do
       line <- B.hGetLine h
-      debugWrite s $ (B.pack ">> ") `B.append` line
       
-      newServ <- foldM (\s f -> f s (parse line)) server internalEvents
+      server1 <- takeMVar s
       
+      -- Print the received line.
+      debugWrite server1 $ (B.pack ">> ") `B.append` line
+      
+      -- Call the internal events
+      newServ <- foldM (\sr f -> f sr (parse line)) server1 internalEvents
+      
+      -- Call the events
       callEvents newServ (parse line)
 
-      listenLoop newServ
+      putMVar s newServ -- Put the MVar back.
+
+      listenLoop s
     
 -- Internal Events - They can edit the server
 joinChans :: IrcServer -> IrcMessage -> IO IrcServer
