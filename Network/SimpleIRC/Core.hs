@@ -302,6 +302,13 @@ ctcpHandler mServ iMsg
     sendCmd mServ
       (MNotice chan ("\x01TIME " `B.append`
         (B.pack time) `B.append` "\x01"))
+  | "\x01PING " `B.isPrefixOf` msg = do
+    server <- readMVar mServ
+    
+    chan <- getChan mServ iMsg
+    sendCmd mServ
+      (MNotice chan msg)
+
   | otherwise = return ()
   where msg = mMsg iMsg
 
