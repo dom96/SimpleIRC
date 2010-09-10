@@ -7,19 +7,20 @@
 -- Stability : provisional
 -- Portability : portable
 --
--- Messages module
+-- Messages (parsing) module
 --
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings, DeriveDataTypeable #-}
 module Network.SimpleIRC.Messages
-  ( Command(..)
+  ( IrcMessage(..)
+  , Command(..)
   , parse
   , showCommand
   )
 where
 import Data.Maybe
-import Network.SimpleIRC.Types
 import qualified Data.ByteString.Char8 as B
 import Control.Arrow
+import Data.Typeable
 
 -- PING :asimov.freenode.net
 -- :haskellTestBot!~test@host86-177-151-242.range86-177.btcentralplus.com JOIN :#()
@@ -45,6 +46,18 @@ data Command = Command
   | MNotice  B.ByteString B.ByteString                      -- ^ NOTICE usr/#chan :msg
   | MAction  B.ByteString B.ByteString                      -- ^ PRIVMSG usr/#chan :ACTION msg
   deriving (Eq, Read, Show)
+
+data IrcMessage = IrcMessage
+  { mNick   :: Maybe B.ByteString
+  , mUser   :: Maybe B.ByteString
+  , mHost   :: Maybe B.ByteString
+  , mServer :: Maybe B.ByteString
+  , mCode   :: B.ByteString
+  , mMsg    :: B.ByteString
+  , mChan   :: Maybe B.ByteString
+  , mOther  :: Maybe [B.ByteString]
+  , mRaw    :: B.ByteString
+  } deriving (Show, Typeable)
 
 -- |Parse a raw IRC message
 parse :: B.ByteString -> IrcMessage

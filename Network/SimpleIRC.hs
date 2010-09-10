@@ -15,15 +15,9 @@ module Network.SimpleIRC (
 
     -- * Messages
   , module Network.SimpleIRC.Messages
-  
-    -- * Utils
-  , module Network.SimpleIRC.Utils
-  
-    -- * Types
-  , module Network.SimpleIRC.Types
+
+
   ) where
 
 import Network.SimpleIRC.Core
 import Network.SimpleIRC.Messages
-import Network.SimpleIRC.Utils
-import Network.SimpleIRC.Types
