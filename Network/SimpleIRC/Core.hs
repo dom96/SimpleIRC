@@ -29,7 +29,7 @@ module Network.SimpleIRC.Core
   , defaultConfig
   
    -- * Utils
-  , getChan
+  , getDest
   
    -- * Accessors
   , getChannels
@@ -291,7 +291,7 @@ ctcpHandler mServ iMsg
   | msg == "\x01VERSION\x01" = do
     server <- readMVar mServ
     
-    chan <- getChan mServ iMsg
+    chan <- getDest mServ iMsg
     sendCmd mServ
       (MNotice chan ("\x01VERSION " `B.append`
         B.pack (sCTCPVersion server) `B.append` "\x01"))
@@ -299,14 +299,14 @@ ctcpHandler mServ iMsg
     server <- readMVar mServ
     
     time <- sCTCPTime server
-    chan <- getChan mServ iMsg
+    chan <- getDest mServ iMsg
     sendCmd mServ
       (MNotice chan ("\x01TIME " `B.append`
         (B.pack time) `B.append` "\x01"))
   | "\x01PING " `B.isPrefixOf` msg = do
     server <- readMVar mServ
     
-    chan <- getChan mServ iMsg
+    chan <- getDest mServ iMsg
     sendCmd mServ
       (MNotice chan msg)
 
@@ -468,9 +468,10 @@ defaultConfig = IrcConfig
   
 -- Utils
 
--- |If the IrcMessage was sent directly to you returns the nick otherwise the channel.
-getChan :: MIrc -> IrcMessage -> IO B.ByteString
-getChan mIrc m = do
+-- |Gets the destination, i.e if the IrcMessage was sent
+--  directly to you returns the senders nick otherwise the channel.
+getDest :: MIrc -> IrcMessage -> IO B.ByteString
+getDest mIrc m = do
   s <- readMVar mIrc
   
   if sNickname s == chan
