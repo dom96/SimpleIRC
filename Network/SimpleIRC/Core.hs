@@ -272,6 +272,7 @@ pong server msg =
         pingMsg = mMsg msg
         code    = mCode msg
 
+-- TODO: Nick and Channels tracking. KICK, PART and NICK.
 onJoin :: IrcServer -> IrcMessage -> IO IrcServer
 onJoin server msg
   | code == "JOIN" = do
@@ -479,12 +480,18 @@ getChan mIrc m = do
   where chan = fromJust $ mChan m
   
 -- MIrc Accessors
+-- |Returns a list of channels currently joined.
+-- 
+-- Currently this is not updated on KICK or PART.
 getChannels :: MIrc -> IO [B.ByteString]
 getChannels mIrc = do
   s <- readMVar mIrc
   
   return $ sChannels s
-  
+
+-- |Returns the current nickname.
+-- 
+-- Currently this is not updated on NICK.
 getNickname :: MIrc -> IO B.ByteString
 getNickname mIrc = do
   s <- readMVar mIrc
