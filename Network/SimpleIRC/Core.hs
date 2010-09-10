@@ -135,9 +135,9 @@ connect :: IrcConfig       -- ^ Configuration
            -> Bool         -- ^ Print debug messages
            -> IO (Either IOError MIrc) -- ^ IrcServer instance
 connect config threaded debug = try $ do
-  if debug
-    then B.putStrLn $ "Connecting to " `B.append` (B.pack $ cAddr config)
-    else return ()
+  (when debug $
+    B.putStrLn $ "Connecting to " `B.append` B.pack (cAddr config))
+  
   h <- connectTo (cAddr config) (PortNumber $ fromIntegral $ cPort config)
   hSetBuffering h NoBuffering
   
@@ -183,7 +183,7 @@ genUniqueMap events = do
 
 toServer :: IrcConfig -> Handle -> Chan SIrcCommand -> Bool -> IO IrcServer
 toServer config h cmdChan debug = do
-  uniqueEvents <- genUniqueMap $ internalNormEvents ++ (cEvents config)
+  uniqueEvents <- genUniqueMap $ internalNormEvents ++ cEvents config
 
   return $ IrcServer (B.pack $ cAddr config) (cPort config)
               (B.pack $ cNick config) (B.pack $ cUsername config) 
@@ -206,9 +206,9 @@ greetServer server = do
 execCmds :: IrcServer -> IO IrcServer
 execCmds server = do
   empty <- isEmptyChan $ sCmdChan server
-  if not $ empty 
+  if not empty 
     then do cmd <- readChan $ sCmdChan server
-            case cmd of (SIrcAddEvent uEvent) -> execCmds $ server {sEvents = Map.insert (fst uEvent) (snd uEvent) (sEvents server)}
+            case cmd of (SIrcAddEvent uEvent) -> execCmds $ server {sEvents = (uncurry Map.insert uEvent) (sEvents server)}
                         (SIrcChangeEvents events) -> execCmds $ server {sEvents = events}
                         (SIrcRemoveEvent key) -> execCmds $ server {sEvents = Map.delete key (sEvents server)}
     else return server
@@ -229,9 +229,7 @@ listenLoop s = do
           events = Map.filter comp (sEvents server)
           eventCall = (\obj -> (eventFuncD $ snd obj) server)
       debugWrite server $ B.pack $ show $ length $ Map.toList events
-      mapM eventCall (Map.toList events)
-
-      return ()
+      mapM_ eventCall (Map.toList events)
     else do
       line <- B.hGetLine h
       
@@ -254,16 +252,16 @@ listenLoop s = do
     
 -- Internal Events - They can edit the server
 joinChans :: IrcServer -> IrcMessage -> IO IrcServer
-joinChans server msg = do
+joinChans server msg =
   if code == "001"
-    then do mapM (\chan -> write server $ "JOIN " `B.append` chan) (sChannels server)
+    then do mapM_ (\chan -> write server $ "JOIN " `B.append` chan) (sChannels server)
             return server {sChannels = []}
     else return server
   where h    = fromJust $ sSock server
         code = mCode msg
 
 pong :: IrcServer -> IrcMessage -> IO IrcServer
-pong server msg = do
+pong server msg =
   if code == "PING"
     then do
       write server $ "PONG :" `B.append` pingMsg
@@ -295,7 +293,7 @@ ctcpHandler mServ iMsg
     chan <- getChan mServ iMsg
     sendCmd mServ
       (MNotice chan ("\x01VERSION " `B.append`
-        (B.pack $ sCTCPVersion server) `B.append` "\x01"))
+        B.pack (sCTCPVersion server) `B.append` "\x01"))
   | msg == "\x01TIME\x01" = do
     server <- readMVar mServ
     
@@ -311,53 +309,52 @@ ctcpHandler mServ iMsg
 events :: MIrc -> IrcEvent -> IrcMessage -> IO ()
 events mServ event msg = do
   server <- readMVar mServ
-  let comp   = (\a -> a `eqEvent` event)
+  let comp   = (`eqEvent` event)
       events = Map.filter comp (sEvents server)
       eventCall = (\obj -> (eventFunc $ snd obj) mServ msg)
 
-  mapM eventCall (Map.toList events)
-  return ()
+  mapM_ eventCall (Map.toList events)
 
 
 callEvents :: MIrc -> IrcMessage -> IO ()
 callEvents mServ msg
-  | mCode msg == "PRIVMSG"     = do
+  | mCode msg == "PRIVMSG"     =
     events mServ (Privmsg undefined) msg
     
-  | mCode msg == "PING"        = do
+  | mCode msg == "PING"        =
     events mServ (Ping undefined) msg
 
-  | mCode msg == "JOIN"        = do
+  | mCode msg == "JOIN"        =
     events mServ (Join undefined) msg
   
-  | mCode msg == "PART"        = do
+  | mCode msg == "PART"        =
     events mServ (Part undefined) msg
 
-  | mCode msg == "MODE"        = do
+  | mCode msg == "MODE"        =
     events mServ (Mode undefined) msg
 
-  | mCode msg == "TOPIC"       = do
+  | mCode msg == "TOPIC"       =
     events mServ (Topic undefined) msg
 
-  | mCode msg == "INVITE"      = do
+  | mCode msg == "INVITE"      =
     events mServ (Invite undefined) msg
 
-  | mCode msg == "KICK"        = do
+  | mCode msg == "KICK"        =
     events mServ (Kick undefined) msg
 
-  | mCode msg == "QUIT"        = do
+  | mCode msg == "QUIT"        =
     events mServ (Quit undefined) msg
 
-  | mCode msg == "NICK"        = do
+  | mCode msg == "NICK"        =
     events mServ (Nick undefined) msg
 
-  | mCode msg == "NOTICE"      = do
+  | mCode msg == "NOTICE"      =
     events mServ (Notice undefined) msg
 
-  | B.all isNumber (mCode msg) = do
+  | B.all isNumber (mCode msg) =
     events mServ (Numeric undefined) msg
   
-  | otherwise                = do
+  | otherwise                =
     events mServ (RawMsg undefined) msg
 
 (Privmsg _) `eqEvent` (Privmsg _) = True
@@ -407,9 +404,8 @@ sendMsg :: MIrc
            -> B.ByteString -- ^ Channel
            -> B.ByteString -- ^ Message
            -> IO ()
-sendMsg mServ chan msg = do
-  mapM (s) lins
-  return ()
+sendMsg mServ chan msg =
+  mapM_ s lins
   where lins = B.lines msg
         s m = sendCmd mServ (MPrivmsg chan m)
         
@@ -442,10 +438,8 @@ remEvent mIrc uniq = do
   writeChan (sCmdChan s) (SIrcRemoveEvent uniq)
 
 debugWrite :: IrcServer -> B.ByteString -> IO ()
-debugWrite s msg = do
-  if sDebug s
-    then B.putStrLn msg
-    else return ()
+debugWrite s msg =
+  (when (sDebug s) $ B.putStrLn msg)
 
 write :: IrcServer -> B.ByteString -> IO ()
 write s msg = do
@@ -461,8 +455,7 @@ defaultConfig = IrcConfig
   , cChannels = []
   , cEvents   = []
   , cCTCPVersion = "SimpleIRC v0.1"
-  , cCTCPTime    =  getZonedTime >>= 
-    (\t -> return $ formatTime defaultTimeLocale "%c" t)
+  , cCTCPTime    = fmap (formatTime defaultTimeLocale "%c") getZonedTime
   }
   
 -- Utils
