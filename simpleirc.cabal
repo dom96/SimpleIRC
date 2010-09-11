@@ -2,7 +2,6 @@ Name:          simpleirc
 Version:       0.2.0
 Category:      Network, IRC
 Synopsis:      Simple IRC Library
-Package-URL:   http://code.haskell.org/fastirc/
 Maintainer:    Dominik Picheta <dominikpicheta@googlemail.com>
 Author:        Dominik Picheta <dominikpicheta@googlemail.com>
 Copyright:     (c) 2010 Dominik Picheta
