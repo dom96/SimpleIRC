@@ -1,5 +1,5 @@
 Name:          simpleirc
-Version:       0.1.0
+Version:       0.2.0
 Category:      Network, IRC
 Synopsis:      Simple IRC Library
 Package-URL:   http://code.haskell.org/fastirc/
@@ -22,7 +22,7 @@ Source-repository head
 Source-repository this
   Type:     git
   Location: git://github.com/dom96/SimpleIRC.git
-  tag:      v0.1.0
+  tag:      v0.2.0
 
 Library
   Build-depends:
