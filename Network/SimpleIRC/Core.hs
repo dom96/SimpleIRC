@@ -84,6 +84,7 @@ data IrcServer = IrcServer
   , sEvents       :: Map.Map Unique IrcEvent
   , sSock         :: Maybe Handle
   , sListenThread :: Maybe ThreadId
+  , sCmdThread    :: Maybe ThreadId
   , sCmdChan      :: Chan SIrcCommand
   , sDebug        :: Bool
   -- Other info
@@ -150,15 +151,15 @@ connect config threaded debug = try $ do
   -- Create a new MVar
   res <- newMVar server
   
-  -- Start listening
+  -- Start the loops, listen and exec cmds
   if threaded
     then do listenId <- forkIO (listenLoop res)
+            cmdId <- forkIO (execCmdsLoop res)
             modifyMVar_ res (\srv -> return $ srv {sListenThread = Just listenId}) 
             return res
     else do listenLoop res
             return res
-  
-  
+
 -- |Sends a QUIT command to the server.
 disconnect :: MIrc
               -> B.ByteString -- ^ Quit message
@@ -169,7 +170,6 @@ disconnect server quitMsg = do
   let h = fromJust $ sSock s
   write s $ "QUIT :" `B.append` quitMsg
   return ()
-  
 
 genUnique :: IrcEvent -> IO (Unique, IrcEvent)
 genUnique e = do
@@ -188,7 +188,7 @@ toServer config h cmdChan debug = do
   return $ IrcServer (B.pack $ cAddr config) (cPort config)
               (B.pack $ cNick config) (B.pack $ cUsername config) 
               (B.pack $ cRealname config) (map B.pack $ cChannels config) 
-              uniqueEvents (Just h) Nothing cmdChan debug
+              uniqueEvents (Just h) Nothing Nothing cmdChan debug
               (cCTCPVersion config) (cCTCPTime config)
 
 greetServer :: IrcServer -> IO IrcServer
@@ -203,21 +203,28 @@ greetServer server = do
         real = sRealname server
         addr = sAddr server
 
-execCmds :: IrcServer -> IO IrcServer
-execCmds server = do
+execCmdsLoop :: MIrc -> IO ()
+execCmdsLoop mIrc = do
+  server <- readMVar mIrc
   empty <- isEmptyChan $ sCmdChan server
   if not empty 
     then do cmd <- readChan $ sCmdChan server
-            case cmd of (SIrcAddEvent uEvent) -> execCmds $ server {sEvents = (uncurry Map.insert uEvent) (sEvents server)}
-                        (SIrcChangeEvents events) -> execCmds $ server {sEvents = events}
-                        (SIrcRemoveEvent key) -> execCmds $ server {sEvents = Map.delete key (sEvents server)}
-    else return server
+            case cmd of (SIrcAddEvent uEvent)     -> do
+                          swapMVar mIrc (server {sEvents = 
+                            (uncurry Map.insert uEvent) (sEvents server)}) 
+                          execCmdsLoop mIrc
+                        (SIrcChangeEvents events) -> do
+                          swapMVar mIrc (server {sEvents = events}) 
+                          execCmdsLoop mIrc
+                        (SIrcRemoveEvent key)     -> do
+                          swapMVar mIrc (server {sEvents = 
+                            Map.delete key (sEvents server)})
+                          execCmdsLoop mIrc
+    else execCmdsLoop mIrc
 
 listenLoop :: MIrc -> IO ()
 listenLoop s = do
-  res <- takeMVar s
-  server <- execCmds res
-  putMVar s server -- Put the MVar back.
+  server <- readMVar s
 
   let h = fromJust $ sSock server
   eof <- hIsEOF h
