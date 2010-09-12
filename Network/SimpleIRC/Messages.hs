@@ -68,7 +68,7 @@ parse txt =
     4 -> parse4 split txt 
     5 -> parse5 split txt
     _ -> parseOther split txt
-                       
+  
   where split = smartSplit (takeCarriageRet txt)
 
 -- Nick, Host, Server

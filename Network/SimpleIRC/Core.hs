@@ -206,21 +206,19 @@ greetServer server = do
 execCmdsLoop :: MIrc -> IO ()
 execCmdsLoop mIrc = do
   server <- readMVar mIrc
-  empty <- isEmptyChan $ sCmdChan server
-  if not empty 
-    then do cmd <- readChan $ sCmdChan server
-            case cmd of (SIrcAddEvent uEvent)     -> do
-                          swapMVar mIrc (server {sEvents = 
-                            (uncurry Map.insert uEvent) (sEvents server)}) 
-                          execCmdsLoop mIrc
-                        (SIrcChangeEvents events) -> do
-                          swapMVar mIrc (server {sEvents = events}) 
-                          execCmdsLoop mIrc
-                        (SIrcRemoveEvent key)     -> do
-                          swapMVar mIrc (server {sEvents = 
-                            Map.delete key (sEvents server)})
-                          execCmdsLoop mIrc
-    else execCmdsLoop mIrc
+  cmd <- readChan $ sCmdChan server
+  case cmd of (SIrcAddEvent uEvent)     -> do
+                swapMVar mIrc (server {sEvents = 
+                  (uncurry Map.insert uEvent) (sEvents server)}) 
+                execCmdsLoop mIrc
+              (SIrcChangeEvents events) -> do
+                swapMVar mIrc (server {sEvents = events}) 
+                execCmdsLoop mIrc
+              (SIrcRemoveEvent key)     -> do
+                swapMVar mIrc (server {sEvents = 
+                  Map.delete key (sEvents server)})
+                execCmdsLoop mIrc
+
 
 listenLoop :: MIrc -> IO ()
 listenLoop s = do
@@ -469,7 +467,7 @@ defaultConfig = IrcConfig
   , cRealname = "SimpleIRC Bot"
   , cChannels = []
   , cEvents   = []
-  , cCTCPVersion = "SimpleIRC v0.1"
+  , cCTCPVersion = "SimpleIRC v0.2"
   , cCTCPTime    = fmap (formatTime defaultTimeLocale "%c") getZonedTime
   }
   
