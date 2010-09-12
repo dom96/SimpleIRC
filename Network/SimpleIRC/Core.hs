@@ -34,6 +34,7 @@ module Network.SimpleIRC.Core
    -- * Accessors
   , getChannels
   , getNickname
+  , getAddress
   ) where
   
 import Network
@@ -503,3 +504,11 @@ getNickname mIrc = do
   s <- readMVar mIrc
   
   return $ sNickname s
+  
+-- |Returns the address
+getAddress :: MIrc -> IO B.ByteString
+getAddress mIrc = do
+  s <- readMVar mIrc
+  
+  return $ sAddr s  
+
