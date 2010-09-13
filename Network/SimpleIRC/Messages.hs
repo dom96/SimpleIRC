@@ -109,11 +109,13 @@ parseOther (server:code:nick:chan:other) =
     (B.unwords other) (Just chan) (Just other)
 
 smartSplit :: B.ByteString -> [B.ByteString]
-smartSplit txt
-  | ':' `B.elem` dropColon txt =
-    let (first, msg) = B.break (== ':') (dropColon txt)
-    in B.words (takeLast first) ++ [msg]
-  | otherwise = B.words txt
+smartSplit txt = 
+  case B.breakSubstring (B.pack " :") (dropColon txt) of
+    (x,y) | B.null y -> 
+              B.words txt
+          | otherwise -> 
+              let (_, msg) = B.break (== ':') y
+              in B.words x ++ [msg]
 
 takeLast :: B.ByteString -> B.ByteString
 takeLast xs = B.take (B.length xs - 1) xs
