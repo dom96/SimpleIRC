@@ -35,6 +35,8 @@ module Network.SimpleIRC.Core
   , getChannels
   , getNickname
   , getAddress
+  , getUsername
+  , getRealname
   ) where
   
 import Network
@@ -413,7 +415,7 @@ sendRaw mServ msg = do
 -- |Sends a message to a channel
 
 -- |Please note: As of now this function doesn't provide flood control.
--- So be careful.
+-- So be careful with \\n.
 sendMsg :: MIrc 
            -> B.ByteString -- ^ Channel
            -> B.ByteString -- ^ Message
@@ -511,4 +513,18 @@ getAddress mIrc = do
   s <- readMVar mIrc
   
   return $ sAddr s  
+
+-- |Returns the User name
+getUsername :: MIrc -> IO B.ByteString
+getUsername mIrc = do
+  s <- readMVar mIrc
+  
+  return $ sUsername s  
+
+-- |Returns the Real name
+getRealname :: MIrc -> IO B.ByteString
+getRealname mIrc = do
+  s <- readMVar mIrc
+  
+  return $ sRealname s  
 
