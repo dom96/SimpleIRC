@@ -63,13 +63,14 @@ data IrcMessage = IrcMessage
 parse :: B.ByteString -> IrcMessage
 parse txt = 
   case length split of 
-    2 -> parse2 split txt
-    3 -> parse3 split txt
-    4 -> parse4 split txt 
-    5 -> parse5 split txt
-    _ -> parseOther split txt
+    2 -> parse2 split noCarriage
+    3 -> parse3 split noCarriage
+    4 -> parse4 split noCarriage 
+    5 -> parse5 split noCarriage
+    _ -> parseOther split noCarriage
   
-  where split = smartSplit (takeCarriageRet txt)
+  where noCarriage = takeCarriageRet txt
+        split      = smartSplit noCarriage
 
 -- Nick, Host, Server
 parseFirst :: B.ByteString -> (Maybe B.ByteString, Maybe B.ByteString, Maybe B.ByteString, Maybe B.ByteString)
