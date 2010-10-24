@@ -42,6 +42,7 @@ module Network.SimpleIRC.Core
 import Network
 import System.IO
 import Data.Maybe
+import Data.List (delete)
 import Data.Char (isNumber)
 import Control.Monad
 import Control.Concurrent
@@ -55,7 +56,7 @@ import System.Locale
 import qualified Data.ByteString.Char8 as B
 import qualified Data.Map as Map
 
-internalEvents     = [joinChans, pong, onJoin]
+internalEvents     = [joinChans, pong, trackChanges]
 internalNormEvents = [Privmsg ctcpHandler]
 
 type MIrc = MVar IrcServer
@@ -283,14 +284,31 @@ pong server msg =
         pingMsg = mMsg msg
         code    = mCode msg
 
--- TODO: Nick and Channels tracking. KICK, PART and NICK.
-onJoin :: IrcServer -> IrcMessage -> IO IrcServer
-onJoin server msg
+trackChanges :: IrcServer -> IrcMessage -> IO IrcServer
+trackChanges server msg
   | code == "JOIN" = do
     let nick = fromJust $ mNick msg
         chan  = mMsg msg
     if nick == sNickname server
       then return server { sChannels = chan:(sChannels server) }
+      else return server
+  | code == "NICK" = do
+    let nick    = fromJust $ mNick msg
+        newNick = mMsg msg
+    if nick == sNickname server
+      then return server { sNickname = newNick }
+      else return server 
+  | code == "KICK" = do 
+    let nick = (fromJust $ mOther msg) !! 0
+        chan = fromJust $ mChan msg
+    if nick == sNickname server
+      then return server { sChannels = delete chan (sChannels server) }
+      else return server
+  | code == "PART" = do 
+    let nick = fromJust $ mNick msg
+        chan = mMsg msg
+    if nick == sNickname server
+      then return server { sChannels = delete chan (sChannels server) }
       else return server
   | otherwise = return server
   
@@ -502,8 +520,6 @@ getChannels mIrc = do
   return $ sChannels s
 
 -- |Returns the current nickname.
--- 
--- Currently this is not updated on NICK.
 getNickname :: MIrc -> IO B.ByteString
 getNickname mIrc = do
   s <- readMVar mIrc

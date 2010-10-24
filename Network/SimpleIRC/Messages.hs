@@ -100,9 +100,10 @@ parse4 (first:code:chan:msg:_) =
        (dropColon msg) (Just chan) Nothing
 
 parse5 :: [B.ByteString] -> B.ByteString -> IrcMessage
-parse5 (server:code:nick:chan:msg:_) =
-  IrcMessage (Just nick) Nothing Nothing (Just server) code
-    (dropColon msg) (Just chan) Nothing
+parse5 (first:code:chan:other:msg:_) =
+  let (nick, user, host, server) = parseFirst first
+  in IrcMessage nick user host server code
+    (dropColon msg) (Just chan) (Just [other])
 
 parseOther :: [B.ByteString] -> B.ByteString -> IrcMessage
 parseOther (server:code:nick:chan:other) =
