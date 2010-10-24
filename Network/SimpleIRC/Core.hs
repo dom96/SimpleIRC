@@ -20,6 +20,7 @@ module Network.SimpleIRC.Core
     -- * Functions
   , connect
   , disconnect
+--  , reconnect
   , sendRaw
   , sendMsg
   , sendCmd
@@ -35,6 +36,7 @@ module Network.SimpleIRC.Core
   , getChannels
   , getNickname
   , getAddress
+  , getPort
   , getUsername
   , getRealname
   ) where
@@ -174,6 +176,20 @@ disconnect server quitMsg = do
   let h = fromJust $ sSock s
   write s $ "QUIT :" `B.append` quitMsg
   return ()
+
+-- TODO: Reconnect 
+{-
+-- |Reconnects to the server.
+reconnect :: MIrc -> IO (Either IOError MIrc)
+reconnect server = do
+  s <- readMVar server
+  
+  let conf = IrcConfig (B.unpack $ sAddr s) (sPort s) 
+                       (B.unpack $ sNickname s) (B.unpack $ sUsername s) 
+                       (B.unpack $ sRealname s) (map (B.unpack) (sChannels s)) 
+                       (elems $ sEvents s) (sCTCPVersion s) (sCTCPTime s)
+  connect conf True (sDebug s)
+-}
 
 genUnique :: IrcEvent -> IO (Unique, IrcEvent)
 genUnique e = do
@@ -511,8 +527,6 @@ getDest mIrc m = do
   
 -- MIrc Accessors
 -- |Returns a list of channels currently joined.
--- 
--- Currently this is not updated on KICK or PART.
 getChannels :: MIrc -> IO [B.ByteString]
 getChannels mIrc = do
   s <- readMVar mIrc
