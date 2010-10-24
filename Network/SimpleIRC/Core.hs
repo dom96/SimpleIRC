@@ -112,7 +112,7 @@ data IrcEvent =
   | Nick EventFunc    -- ^ NICK
   | Notice EventFunc  -- ^ NOTICE
   | RawMsg EventFunc  -- ^ This event gets called on every message received
-  | Disconnect (IrcServer -> IO ()) -- ^ This event gets called whenever the
+  | Disconnect (MIrc -> IO ()) -- ^ This event gets called whenever the
                                     --   connection with the server is dropped
   
 instance Show IrcEvent where
@@ -235,7 +235,7 @@ listenLoop s = do
     then do
       let comp   = (\a -> a `eqEvent` (Disconnect undefined))
           events = Map.filter comp (sEvents server)
-          eventCall = (\obj -> (eventFuncD $ snd obj) server)
+          eventCall = (\obj -> (eventFuncD $ snd obj) s)
       debugWrite server $ B.pack $ show $ length $ Map.toList events
       mapM_ eventCall (Map.toList events)
     else do
@@ -516,6 +516,13 @@ getAddress mIrc = do
   s <- readMVar mIrc
   
   return $ sAddr s  
+
+-- |Returns the address
+getPort :: MIrc -> IO Int
+getPort mIrc = do
+  s <- readMVar mIrc
+  
+  return $ sPort s
 
 -- |Returns the User name
 getUsername :: MIrc -> IO B.ByteString
