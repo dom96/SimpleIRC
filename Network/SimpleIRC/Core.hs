@@ -20,7 +20,7 @@ module Network.SimpleIRC.Core
     -- * Functions
   , connect
   , disconnect
---  , reconnect
+  , reconnect
   , sendRaw
   , sendMsg
   , sendCmd
@@ -177,7 +177,24 @@ disconnect server quitMsg = do
   write s $ "QUIT :" `B.append` quitMsg
   return ()
 
--- TODO: Reconnect 
+-- |Reconnects to the server.
+reconnect :: MIrc -> IO (Either IOError MIrc)
+reconnect mServer = try $ do
+  server <- readMVar mServer
+  
+  h <- connectTo (B.unpack $ sAddr server) (PortNumber $ fromIntegral $ sPort server)
+
+  -- Initialize connection with the server
+  greetServer server
+
+  -- Restart the listen loop.
+  listenId <- forkIO (listenLoop mServer)
+  cmdId <- forkIO (execCmdsLoop mServer)
+  modifyMVar_ mServer (\s -> return $ s {sSock = Just h, 
+                       sListenThread = Just listenId,
+                       sCmdThread = Just cmdId})
+  return mServer
+
 {-
 -- |Reconnects to the server.
 reconnect :: MIrc -> IO (Either IOError MIrc)
@@ -248,7 +265,7 @@ listenLoop s = do
   eof <- hIsEOF h
   
   -- If EOF then we are disconnected
-  if eof 
+  if eof
     then do
       let comp   = (\a -> a `eqEvent` (Disconnect undefined))
           events = Map.filter comp (sEvents server)
