@@ -183,16 +183,17 @@ reconnect mServer = try $ do
   server <- readMVar mServer
   
   h <- connectTo (B.unpack $ sAddr server) (PortNumber $ fromIntegral $ sPort server)
+  hSetBuffering h NoBuffering
+  modifyMVar_ mServer (\s -> return $ s {sSock = Just h})
 
   -- Initialize connection with the server
-  greetServer server
+  withMVar mServer greetServer
 
   -- Restart the listen loop.
   listenId <- forkIO (listenLoop mServer)
   cmdId <- forkIO (execCmdsLoop mServer)
-  modifyMVar_ mServer (\s -> return $ s {sSock = Just h, 
-                       sListenThread = Just listenId,
-                       sCmdThread = Just cmdId})
+  modifyMVar_ mServer (\s -> return $ s {sListenThread = Just listenId,
+                        sCmdThread = Just cmdId})
   return mServer
 
 {-
@@ -270,6 +271,7 @@ listenLoop s = do
       let comp   = (\a -> a `eqEvent` (Disconnect undefined))
           events = Map.filter comp (sEvents server)
           eventCall = (\obj -> (eventFuncD $ snd obj) s)
+      modifyMVar_ s (\serv -> return $ serv {sSock = Nothing})
       debugWrite server $ B.pack $ show $ length $ Map.toList events
       mapM_ eventCall (Map.toList events)
     else do
