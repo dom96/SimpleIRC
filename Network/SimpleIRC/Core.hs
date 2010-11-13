@@ -29,9 +29,6 @@ module Network.SimpleIRC.Core
   , remEvent
   , defaultConfig
   
-   -- * Utils
-  , getDest
-  
    -- * Accessors
   , getChannels
   , getNickname
@@ -355,28 +352,26 @@ ctcpHandler mServ iMsg
   | msg == "\x01VERSION\x01" = do
     server <- readMVar mServ
     
-    chan <- getDest mServ iMsg
     sendCmd mServ
-      (MNotice chan ("\x01VERSION " `B.append`
+      (MNotice origin ("\x01VERSION " `B.append`
         B.pack (sCTCPVersion server) `B.append` "\x01"))
+
   | msg == "\x01TIME\x01" = do
     server <- readMVar mServ
     
     time <- sCTCPTime server
-    chan <- getDest mServ iMsg
     sendCmd mServ
-      (MNotice chan ("\x01TIME " `B.append`
+      (MNotice origin ("\x01TIME " `B.append`
         (B.pack time) `B.append` "\x01"))
   | "\x01PING " `B.isPrefixOf` msg = do
     server <- readMVar mServ
     
-    chan <- getDest mServ iMsg
     sendCmd mServ
-      (MNotice chan msg)
+      (MNotice origin msg)
 
   | otherwise = return ()
-  where msg = mMsg iMsg
-
+  where msg    = mMsg iMsg
+        origin = fromJust $ mOrigin iMsg
 -- Event code
 events :: MIrc -> IrcEvent -> IrcMessage -> IO ()
 events mServ event msg = do
@@ -529,20 +524,6 @@ defaultConfig = IrcConfig
   , cCTCPVersion = "SimpleIRC v0.2"
   , cCTCPTime    = fmap (formatTime defaultTimeLocale "%c") getZonedTime
   }
-  
--- Utils
-
--- |Gets the destination, i.e if the IrcMessage was sent
---  directly to you returns the senders nick otherwise the channel.
-getDest :: MIrc -> IrcMessage -> IO B.ByteString
-getDest mIrc m = do
-  s <- readMVar mIrc
-  
-  if sNickname s == chan
-    then return (fromJust $ mNick m)
-    else return chan
-  
-  where chan = fromJust $ mChan m
   
 -- MIrc Accessors
 -- |Returns a list of channels currently joined.

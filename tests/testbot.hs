@@ -8,12 +8,10 @@ privmsgTest s msg = do
   putStrLn $ show $ privmsg
   putStrLn $ show $ privmsg == "|test"
   if privmsg == "|test" || privmsg == "$kill"
-    then do sendMsg s chan ("Works! -- "
-                `B.append` (B.pack $ show $ sChannels s) `B.append`
-                " -- " `B.append` (B.pack $ show $ sAddr s))
+    then sendMsg s origin ("DIE!")
     else return ()
   where privmsg = mMsg msg
-        chan    = fromJust $ mChan msg
+        origin  = fromJust $ mOrigin msg
 
 quitMsg :: EventFunc
 quitMsg s msg
@@ -21,33 +19,12 @@ quitMsg s msg
     disconnect s "Bai!"
   | otherwise = return ()
 
-onDisconnect :: IrcServer -> IO ()
-onDisconnect s = B.putStrLn $ "Disconnected from " `B.append` (sAddr s)
-
 events = [(Privmsg privmsgTest)
          ,(Privmsg quitMsg)
-         ,(Disconnect onDisconnect)
          ]
 
-freenode = IrcConfig 
-  "irc.freenode.net" 
-  6667 
-  "SimpleIRCBot" 
-  "simpleirc" 
-  "test 1" 
-  ["#()"] 
-  events 
-
-ninthbit = IrcConfig 
-  "irc.ninthbit1212.net" 
-  6667 
-  "SimpleIRCBot" 
-  "simpleirc" 
-  "test 1" 
-  ["#bots"] 
-  events 
+freenode = defaultConfig { cAddr = "irc.freenode.net", cNick = "SimpleIRCBot", cChannels = ["#()"], cEvents = events}
 
 main = do
   --connect freenode True True
-  ret <- connect ninthbit False True
-  either (\e -> putStrLn $ "Unable to connect: " ++ (show e)) (\_ -> return ()) ret
+  connect freenode False True

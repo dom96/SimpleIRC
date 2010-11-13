@@ -20,6 +20,7 @@ where
 import Data.Maybe
 import qualified Data.ByteString.Char8 as B
 import Control.Arrow
+import Control.Applicative
 import Data.Typeable
 
 -- PING :asimov.freenode.net
@@ -55,6 +56,7 @@ data IrcMessage = IrcMessage
   , mCode   :: B.ByteString
   , mMsg    :: B.ByteString
   , mChan   :: Maybe B.ByteString
+  , mOrigin :: Maybe B.ByteString   -- ^ Origin of the message, this is mNick if a message was sent directly to the bot, otherwise if it got sent to the channel it's mChan.
   , mOther  :: Maybe [B.ByteString]
   , mRaw    :: B.ByteString
   } deriving (Show, Typeable)
@@ -83,32 +85,40 @@ parseFirst first =
                else (Just nick, Nothing, Just user_host, Nothing)
     else (Nothing, Nothing, Nothing, Just $ dropColon first) 
 
+getOrigin :: Maybe B.ByteString -> B.ByteString -> B.ByteString
+getOrigin (Just nick) chan =
+  if "#" `B.isPrefixOf` chan || "&" `B.isPrefixOf` chan || "+" `B.isPrefixOf` chan
+      || "!" `B.isPrefixOf` chan
+    then chan
+    else nick
+getOrigin Nothing chan = chan
+
 parse2 :: [B.ByteString] -> B.ByteString -> IrcMessage
 parse2 (code:msg:_) =
   IrcMessage Nothing Nothing Nothing Nothing code
-    (dropColon msg) Nothing Nothing
+    (dropColon msg) Nothing Nothing Nothing
     
 parse3 :: [B.ByteString] -> B.ByteString -> IrcMessage
 parse3 (first:code:msg:_) =
   let (nick, user, host, server) = parseFirst first
-  in IrcMessage nick user host server code (dropColon msg) Nothing Nothing
+  in IrcMessage nick user host server code (dropColon msg) Nothing Nothing Nothing
   
 parse4 :: [B.ByteString] -> B.ByteString -> IrcMessage
 parse4 (first:code:chan:msg:_) = 
   let (nick, user, host, server) = parseFirst first
   in IrcMessage nick user host server code
-       (dropColon msg) (Just chan) Nothing
+       (dropColon msg) (Just chan) (Just $ getOrigin nick chan) Nothing
 
 parse5 :: [B.ByteString] -> B.ByteString -> IrcMessage
 parse5 (first:code:chan:other:msg:_) =
   let (nick, user, host, server) = parseFirst first
   in IrcMessage nick user host server code
-    (dropColon msg) (Just chan) (Just [other])
+    (dropColon msg) (Just chan) (Just $ getOrigin nick chan) (Just [other])
 
 parseOther :: [B.ByteString] -> B.ByteString -> IrcMessage
 parseOther (server:code:nick:chan:other) =
   IrcMessage (Just nick) Nothing Nothing (Just server) code
-    (B.unwords other) (Just chan) (Just other)
+    (B.unwords other) (Just chan) (Just $ getOrigin (Just nick) chan) (Just other)
 
 smartSplit :: B.ByteString -> [B.ByteString]
 smartSplit txt = 
