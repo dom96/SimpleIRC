@@ -64,6 +64,7 @@ data IrcConfig = IrcConfig
   { cAddr     :: String   -- ^ Server address to connect to
   , cPort     :: Int      -- ^ Server port to connect to
   , cNick     :: String   -- ^ Nickname
+  , cPass     :: Maybe String -- ^ Optional server password
   , cUsername :: String   -- ^ Username
   , cRealname :: String   -- ^ Realname
   , cChannels :: [String]   -- ^ List of channels to join on connect
@@ -81,6 +82,7 @@ data IrcServer = IrcServer
   { sAddr         :: B.ByteString
   , sPort         :: Int
   , sNickname     :: B.ByteString
+  , sPassword     :: Maybe B.ByteString
   , sUsername     :: B.ByteString
   , sRealname     :: B.ByteString
   , sChannels     :: [B.ByteString]
@@ -221,19 +223,23 @@ toServer config h cmdChan debug = do
   uniqueEvents <- genUniqueMap $ internalNormEvents ++ cEvents config
 
   return $ IrcServer (B.pack $ cAddr config) (cPort config)
-              (B.pack $ cNick config) (B.pack $ cUsername config) 
+              (B.pack $ cNick config) (B.pack `fmap` cPass config) (B.pack $ cUsername config) 
               (B.pack $ cRealname config) (map B.pack $ cChannels config) 
               uniqueEvents (Just h) Nothing Nothing cmdChan debug
               (cCTCPVersion config) (cCTCPTime config)
 
 greetServer :: IrcServer -> IO IrcServer
 greetServer server = do
+  case mpass of
+    Nothing -> return ()
+    Just pass -> write server $ "PASS " `B.append` pass
   write server $ "NICK " `B.append` nick
   write server $ "USER " `B.append` user `B.append` " " `B.append`
       user `B.append` " " `B.append` addr `B.append` " :" `B.append` real
   
   return server
   where nick = sNickname server
+        mpass = sPassword server
         user = sUsername server
         real = sRealname server
         addr = sAddr server
@@ -517,6 +523,7 @@ write s msg = do
 
 defaultConfig = IrcConfig
   { cPort     = 6667
+  , cPass     = Nothing
   , cUsername = "simpleirc"
   , cRealname = "SimpleIRC Bot"
   , cChannels = []
