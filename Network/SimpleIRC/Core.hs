@@ -50,6 +50,7 @@ import Control.Concurrent.MVar
 import Network.SimpleIRC.Messages
 import Data.Unique
 import System.IO.Error
+import System.Timeout
 import Data.Time
 import System.Locale
 import qualified Data.ByteString.Char8 as B
@@ -71,6 +72,7 @@ data IrcConfig = IrcConfig
   , cEvents   :: [IrcEvent] -- ^ Events to bind
   , cCTCPVersion :: String  -- ^ What to send on CTCP VERSION
   , cCTCPTime    :: IO String  -- ^ What to send on CTCP TIME
+  , cPingTimeoutInterval :: Int -- The time between server messages that causes ping timeout
   }
 
 data SIrcCommand =
@@ -95,6 +97,7 @@ data IrcServer = IrcServer
   -- Other info
   , sCTCPVersion  :: String
   , sCTCPTime     :: IO String
+  , sPingTimeoutInterval :: Int
   }
 
 -- When adding events here, remember add them in callEvents and in eventFunc
@@ -226,7 +229,7 @@ toServer config h cmdChan debug = do
               (B.pack $ cNick config) (B.pack `fmap` cPass config) (B.pack $ cUsername config) 
               (B.pack $ cRealname config) (map B.pack $ cChannels config) 
               uniqueEvents (Just h) Nothing Nothing cmdChan debug
-              (cCTCPVersion config) (cCTCPTime config)
+              (cCTCPVersion config) (cCTCPTime config) (cPingTimeoutInterval config)
 
 greetServer :: IrcServer -> IO IrcServer
 greetServer server = do
@@ -266,10 +269,10 @@ listenLoop s = do
   server <- readMVar s
 
   let h = fromJust $ sSock server
-  eof <- hIsEOF h
+  eof <- timeout (sPingTimeoutInterval server) $ hIsEOF h
   
   -- If EOF then we are disconnected
-  if eof
+  if (eof /= Just False)
     then do
       let comp   = (\a -> a `eqEvent` (Disconnect undefined))
           events = Map.filter comp (sEvents server)
@@ -530,6 +533,7 @@ defaultConfig = IrcConfig
   , cEvents   = []
   , cCTCPVersion = "SimpleIRC v0.2"
   , cCTCPTime    = fmap (formatTime defaultTimeLocale "%c") getZonedTime
+  , cPingTimeoutInterval = 350 * 10^6
   }
   
 -- MIrc Accessors
