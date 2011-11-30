@@ -1,5 +1,5 @@
 Name:          simpleirc
-Version:       0.2.0
+Version:       0.2.1
 Category:      Network, IRC
 Synopsis:      Simple IRC Library
 Maintainer:    Dominik Picheta <dominikpicheta@googlemail.com>
@@ -21,7 +21,7 @@ Source-repository head
 Source-repository this
   Type:     git
   Location: git://github.com/dom96/SimpleIRC.git
-  tag:      v0.2.0
+  tag:      v0.2.1
 
 Library
   Build-depends:
