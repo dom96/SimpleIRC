@@ -27,7 +27,7 @@ module Network.SimpleIRC.Core
   , addEvent
   , changeEvents
   , remEvent
-  , defaultConfig
+  , mkDefaultConfig
 
    -- * Accessors
   , getChannels
@@ -523,9 +523,11 @@ write s msg = do
   B.hPutStr h (msg `B.append` "\r\n")
   where h = fromJust $ sSock s
 
-
-defaultConfig = IrcConfig
-  { cPort     = 6667
+mkDefaultConfig :: String -> String -> IrcConfig
+mkDefaultConfig addr nick = IrcConfig
+  { cAddr     = addr
+  , cPort     = 6667
+  , cNick     = nick
   , cPass     = Nothing
   , cUsername = "simpleirc"
   , cRealname = "SimpleIRC Bot"
