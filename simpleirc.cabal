@@ -35,3 +35,17 @@ Library
     Network.SimpleIRC
     Network.SimpleIRC.Core
     Network.SimpleIRC.Messages
+
+test-suite spec
+  type:
+      exitcode-stdio-1.0
+  ghc-options:
+      -Wall -Werror
+  hs-source-dirs:
+      ., tests
+  main-is:
+      Spec.hs
+  build-depends:
+      base
+    , bytestring
+    , hspec
