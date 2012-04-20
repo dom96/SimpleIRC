@@ -49,7 +49,7 @@ import Control.Concurrent.Chan
 import Control.Concurrent.MVar
 import Network.SimpleIRC.Messages
 import Data.Unique
-import System.IO.Error
+import Control.Exception (try)
 import System.Timeout
 import Data.Time
 import System.Locale
