@@ -33,7 +33,7 @@ import Data.Typeable
 -- :asimov.freenode.net 332 haskellTestBot #() :Parenthesis
 
 -- :asimov.freenode.net 333 haskellTestBot #() Raynes!~macr0@unaffiliated/raynes 1281221819
-  
+
 data Command = Command
   | MPrivmsg B.ByteString B.ByteString                      -- ^ PRIVMSG #chan :msg
   | MJoin    B.ByteString (Maybe B.ByteString)              -- ^ JOIN #chan key
@@ -63,27 +63,27 @@ data IrcMessage = IrcMessage
 
 -- |Parse a raw IRC message
 parse :: B.ByteString -> IrcMessage
-parse txt = 
-  case length split of 
+parse txt =
+  case length split of
     2 -> parse2 split noCarriage
     3 -> parse3 split noCarriage
-    4 -> parse4 split noCarriage 
+    4 -> parse4 split noCarriage
     5 -> parse5 split noCarriage
     _ -> parseOther split noCarriage
-  
+
   where noCarriage = takeCarriageRet txt
         split      = smartSplit noCarriage
 
 -- Nick, Host, Server
 parseFirst :: B.ByteString -> (Maybe B.ByteString, Maybe B.ByteString, Maybe B.ByteString, Maybe B.ByteString)
-parseFirst first = 
+parseFirst first =
   if '!' `B.elem` first
     then let (nick, user_host) = B.break (== '!') (dropColon first)
          in if '@' `B.elem` user_host
                then let (user, host) = second B.tail $ B.break (== '@') $ B.tail user_host
                     in (Just nick, Just user, Just host, Nothing)
                else (Just nick, Nothing, Just user_host, Nothing)
-    else (Nothing, Nothing, Nothing, Just $ dropColon first) 
+    else (Nothing, Nothing, Nothing, Just $ dropColon first)
 
 getOrigin :: Maybe B.ByteString -> B.ByteString -> B.ByteString
 getOrigin (Just nick) chan =
@@ -97,14 +97,14 @@ parse2 :: [B.ByteString] -> B.ByteString -> IrcMessage
 parse2 (code:msg:_) =
   IrcMessage Nothing Nothing Nothing Nothing code
     (dropColon msg) Nothing Nothing Nothing
-    
+
 parse3 :: [B.ByteString] -> B.ByteString -> IrcMessage
 parse3 (first:code:msg:_) =
   let (nick, user, host, server) = parseFirst first
   in IrcMessage nick user host server code (dropColon msg) Nothing Nothing Nothing
-  
+
 parse4 :: [B.ByteString] -> B.ByteString -> IrcMessage
-parse4 (first:code:chan:msg:_) = 
+parse4 (first:code:chan:msg:_) =
   let (nick, user, host, server) = parseFirst first
   in IrcMessage nick user host server code
        (dropColon msg) (Just chan) (Just $ getOrigin nick chan) Nothing
@@ -121,11 +121,11 @@ parseOther (server:code:nick:chan:other) =
     (B.unwords other) (Just chan) (Just $ getOrigin (Just nick) chan) (Just other)
 
 smartSplit :: B.ByteString -> [B.ByteString]
-smartSplit txt = 
+smartSplit txt =
   case B.breakSubstring (B.pack " :") (dropColon txt) of
-    (x,y) | B.null y -> 
+    (x,y) | B.null y ->
               B.words txt
-          | otherwise -> 
+          | otherwise ->
               let (_, msg) = B.break (== ':') y
               in B.words x ++ [msg]
 
@@ -133,7 +133,7 @@ takeLast :: B.ByteString -> B.ByteString
 takeLast xs = B.take (B.length xs - 1) xs
 
 takeCarriageRet :: B.ByteString -> B.ByteString
-takeCarriageRet xs = 
+takeCarriageRet xs =
   if B.drop (B.length xs - 1) xs == B.pack "\r"
     then takeLast xs
     else xs
@@ -147,10 +147,10 @@ dropColon xs =
 showCommand :: Command -> B.ByteString
 showCommand (MPrivmsg chan msg)             = "PRIVMSG " `B.append` chan `B.append`
                                               " :" `B.append` msg
-showCommand (MJoin    chan (Just key))      = "JOIN " `B.append` chan `B.append` 
+showCommand (MJoin    chan (Just key))      = "JOIN " `B.append` chan `B.append`
                                               " " `B.append` key
 showCommand (MJoin    chan Nothing)         = "JOIN " `B.append` chan
-showCommand (MPart    chan msg)             = "PART " `B.append` chan `B.append` 
+showCommand (MPart    chan msg)             = "PART " `B.append` chan `B.append`
                                               " :" `B.append` msg
 showCommand (MMode    chan mode (Just usr)) = "MODE " `B.append` chan `B.append`
                                               " " `B.append` mode `B.append`
