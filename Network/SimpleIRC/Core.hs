@@ -57,6 +57,7 @@ import Data.Time
 import System.Locale
 import qualified Data.ByteString.Char8 as B
 import qualified Data.Map as Map
+import qualified Data.Foldable as Foldable
 
 internalEvents :: [IrcServer -> IrcMessage -> IO IrcServer]
 internalEvents     = [joinChans, pong, trackChanges]
@@ -277,12 +278,8 @@ listenLoop s = do
   -- If EOF then we are disconnected
   if (eof /= Just False)
     then do
-      let comp   = (\a -> a `eqEvent` (Disconnect undefined))
-          evts = Map.filter comp (sEvents server)
-          eventCall = (\obj -> (eventFuncD $ snd obj) s)
       modifyMVar_ s (\serv -> return $ serv {sSock = Nothing})
-      debugWrite server $ B.pack $ show $ length $ Map.toList evts
-      mapM_ eventCall (Map.toList evts)
+      Foldable.mapM_ (callDisconnectFunction s) (sEvents server)
     else do
       line <- B.hGetLine h
 
@@ -305,6 +302,9 @@ listenLoop s = do
 
 
       listenLoop s
+  where
+    callDisconnectFunction mIrc (Disconnect f) = f mIrc
+    callDisconnectFunction _ _ = return ()
 
 -- Internal Events - They can edit the server
 joinChans :: IrcServer -> IrcMessage -> IO IrcServer
@@ -464,8 +464,6 @@ eventFunc (Quit    f) = f
 eventFunc (Nick    f) = f
 eventFunc (Notice  f) = f
 eventFunc (RawMsg  f) = f
-
-eventFuncD (Disconnect  f) = f
 
 -- |Sends a raw command to the server
 sendRaw :: MIrc -> B.ByteString -> IO ()
