@@ -464,6 +464,7 @@ eventFunc (Quit    f) = f
 eventFunc (Nick    f) = f
 eventFunc (Notice  f) = f
 eventFunc (RawMsg  f) = f
+eventFunc (Disconnect _) = error "SimpleIRC: unexpected event"
 
 -- |Sends a raw command to the server
 sendRaw :: MIrc -> B.ByteString -> IO ()

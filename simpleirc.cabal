@@ -36,13 +36,13 @@ Library
     Network.SimpleIRC.Core
     Network.SimpleIRC.Messages
   ghc-options:
-      -Wall
+      -Wall -Werror
 
 test-suite spec
   type:
       exitcode-stdio-1.0
   ghc-options:
-      -Wall
+      -Wall -Werror
   cpp-options:
       -DTEST
   hs-source-dirs:
