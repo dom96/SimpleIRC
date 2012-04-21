@@ -1,5 +1,5 @@
 Name:          simpleirc
-Version:       0.2.1
+Version:       0.3.0
 Category:      Network, IRC
 Synopsis:      Simple IRC Library
 Maintainer:    Dominik Picheta <dominikpicheta@googlemail.com>
@@ -35,3 +35,23 @@ Library
     Network.SimpleIRC
     Network.SimpleIRC.Core
     Network.SimpleIRC.Messages
+  ghc-options:
+      -Wall -Werror
+
+test-suite spec
+  type:
+      exitcode-stdio-1.0
+  ghc-options:
+      -Wall -Werror
+  cpp-options:
+      -DTEST
+  hs-source-dirs:
+      ., tests
+  main-is:
+      Spec.hs
+  build-depends:
+      base
+    , bytestring
+    , hspec
+    , HUnit
+    , knob
