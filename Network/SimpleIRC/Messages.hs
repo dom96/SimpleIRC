@@ -62,12 +62,13 @@ data IrcMessage = IrcMessage
 -- |Parse a raw IRC message
 parse :: B.ByteString -> IrcMessage
 parse txt =
-  case length split of
-    2 -> parse2 split noCarriage
-    3 -> parse3 split noCarriage
-    4 -> parse4 split noCarriage
-    5 -> parse5 split noCarriage
-    _ -> parseOther split noCarriage
+  case split of
+    [code, msg]                     -> parse2 code msg noCarriage
+    [first, code, msg]              -> parse3 first code msg noCarriage
+    [first, code, chan, msg]        -> parse4 first code chan msg noCarriage
+    [first, code, chan, other, msg] -> parse5 first code chan other msg noCarriage
+    server:code:nick:chan:other     -> parseOther server code nick chan other noCarriage
+    _                               -> error "SimpleIRC: unexpected message format"
 
   where noCarriage = takeCarriageRet txt
         split      = smartSplit noCarriage
@@ -91,30 +92,47 @@ getOrigin (Just nick) chan =
     else nick
 getOrigin Nothing chan = chan
 
-parse2 :: [B.ByteString] -> B.ByteString -> IrcMessage
-parse2 (code:msg:_) =
+parse2 :: B.ByteString -> B.ByteString -> B.ByteString -> IrcMessage
+parse2 code msg =
   IrcMessage Nothing Nothing Nothing Nothing code
     (dropColon msg) Nothing Nothing Nothing
 
-parse3 :: [B.ByteString] -> B.ByteString -> IrcMessage
-parse3 (first:code:msg:_) =
+parse3 :: B.ByteString -> B.ByteString -> B.ByteString -> B.ByteString -> IrcMessage
+parse3 first code msg =
   let (nick, user, host, server) = parseFirst first
   in IrcMessage nick user host server code (dropColon msg) Nothing Nothing Nothing
 
-parse4 :: [B.ByteString] -> B.ByteString -> IrcMessage
-parse4 (first:code:chan:msg:_) =
+parse4 :: B.ByteString
+       -> B.ByteString
+       -> B.ByteString
+       -> B.ByteString
+       -> B.ByteString
+       -> IrcMessage
+parse4 first code chan msg =
   let (nick, user, host, server) = parseFirst first
   in IrcMessage nick user host server code
        (dropColon msg) (Just chan) (Just $ getOrigin nick chan) Nothing
 
-parse5 :: [B.ByteString] -> B.ByteString -> IrcMessage
-parse5 (first:code:chan:other:msg:_) =
+parse5 :: B.ByteString
+       -> B.ByteString
+       -> B.ByteString
+       -> B.ByteString
+       -> B.ByteString
+       -> B.ByteString
+       -> IrcMessage
+parse5 first code chan other msg =
   let (nick, user, host, server) = parseFirst first
   in IrcMessage nick user host server code
     (dropColon msg) (Just chan) (Just $ getOrigin nick chan) (Just [other])
 
-parseOther :: [B.ByteString] -> B.ByteString -> IrcMessage
-parseOther (server:code:nick:chan:other) =
+parseOther :: B.ByteString
+           -> B.ByteString
+           -> B.ByteString
+           -> B.ByteString
+           -> [B.ByteString]
+           -> B.ByteString
+           -> IrcMessage
+parseOther server code nick chan other =
   IrcMessage (Just nick) Nothing Nothing (Just server) code
     (B.unwords other) (Just chan) (Just $ getOrigin (Just nick) chan) (Just other)
 
