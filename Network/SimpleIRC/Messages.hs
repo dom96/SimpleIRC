@@ -32,8 +32,8 @@ import Data.Typeable
 
 -- :asimov.freenode.net 333 haskellTestBot #() Raynes!~macr0@unaffiliated/raynes 1281221819
 
-data Command = Command
-  | MPrivmsg B.ByteString B.ByteString                      -- ^ PRIVMSG #chan :msg
+data Command =
+    MPrivmsg B.ByteString B.ByteString                      -- ^ PRIVMSG #chan :msg
   | MJoin    B.ByteString (Maybe B.ByteString)              -- ^ JOIN #chan key
   | MPart    B.ByteString B.ByteString                      -- ^ PART #chan :msg
   | MMode    B.ByteString B.ByteString (Maybe B.ByteString) -- ^ MODE #chan +o user
