@@ -35,6 +35,8 @@ Library
     Network.SimpleIRC
     Network.SimpleIRC.Core
     Network.SimpleIRC.Messages
+  ghc-options:
+      -Wall
 
 test-suite spec
   type:

@@ -45,8 +45,6 @@ import Data.List (delete)
 import Data.Char (isNumber)
 import Control.Monad
 import Control.Concurrent
-import Control.Concurrent.Chan
-import Control.Concurrent.MVar
 import Network.SimpleIRC.Messages
 import Data.Unique
 import Control.Exception (try)

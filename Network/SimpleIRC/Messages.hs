@@ -17,10 +17,8 @@ module Network.SimpleIRC.Messages
   , showCommand
   )
 where
-import Data.Maybe
 import qualified Data.ByteString.Char8 as B
-import Control.Arrow
-import Control.Applicative
+import Control.Arrow hiding (first)
 import Data.Typeable
 
 -- PING :asimov.freenode.net
