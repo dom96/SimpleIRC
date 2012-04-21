@@ -54,7 +54,9 @@ import System.Locale
 import qualified Data.ByteString.Char8 as B
 import qualified Data.Map as Map
 
+internalEvents :: [IrcServer -> IrcMessage -> IO IrcServer]
 internalEvents     = [joinChans, pong, trackChanges]
+internalNormEvents :: [IrcEvent]
 internalNormEvents = [Privmsg ctcpHandler]
 
 type MIrc = MVar IrcServer
@@ -431,6 +433,7 @@ callEvents mServ msg
   | otherwise                = return ()
 
 
+eqEvent :: IrcEvent -> IrcEvent -> Bool
 (Privmsg _) `eqEvent` (Privmsg _) = True
 (Numeric _) `eqEvent` (Numeric _) = True
 (Ping    _) `eqEvent` (Ping    _) = True
