@@ -42,7 +42,9 @@ test-suite spec
   type:
       exitcode-stdio-1.0
   ghc-options:
-      -Wall -Werror
+      -Wall
+  cpp-options:
+      -DTEST
   hs-source-dirs:
       ., tests
   main-is:
@@ -51,3 +53,5 @@ test-suite spec
       base
     , bytestring
     , hspec
+    , HUnit
+    , knob

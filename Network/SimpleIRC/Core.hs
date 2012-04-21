@@ -8,7 +8,7 @@
 -- Portability : portable
 --
 -- For information on how to use this library please take a look at the readme file on github, <http://github.com/dom96/SimpleIRC#readme>.
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings, CPP #-}
 module Network.SimpleIRC.Core
   (
     -- * Types
@@ -36,6 +36,10 @@ module Network.SimpleIRC.Core
   , getPort
   , getUsername
   , getRealname
+#ifdef TEST
+  , IrcServer(..)
+  , listenLoop
+#endif
   ) where
 
 import Network
