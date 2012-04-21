@@ -154,7 +154,7 @@ connect config threaded debug = try $ do
 
   server <- toServer config h cmdChan debug
   -- Initialize connection with the server
-  greetServer server
+  _ <- greetServer server
 
   -- Create a new MVar
   res <- newMVar server
@@ -162,7 +162,7 @@ connect config threaded debug = try $ do
   -- Start the loops, listen and exec cmds
   if threaded
     then do listenId <- forkIO (listenLoop res)
-            cmdId <- forkIO (execCmdsLoop res)
+            _ <- forkIO (execCmdsLoop res)
             modifyMVar_ res (\srv -> return $ srv {sListenThread = Just listenId})
             return res
     else do listenLoop res
@@ -175,28 +175,27 @@ disconnect :: MIrc
 disconnect server quitMsg = do
   s <- readMVar server
 
-  let h = fromJust $ sSock s
   write s $ "QUIT :" `B.append` quitMsg
   return ()
 
 -- |Reconnects to the server.
 reconnect :: MIrc -> IO (Either IOError MIrc)
-reconnect mServer = try $ do
-  server <- readMVar mServer
+reconnect mIrc = try $ do
+  server <- readMVar mIrc
 
   h <- connectTo (B.unpack $ sAddr server) (PortNumber $ fromIntegral $ sPort server)
   hSetBuffering h NoBuffering
-  modifyMVar_ mServer (\s -> return $ s {sSock = Just h})
+  modifyMVar_ mIrc (\s -> return $ s {sSock = Just h})
 
   -- Initialize connection with the server
-  withMVar mServer greetServer
+  _ <- withMVar mIrc greetServer
 
   -- Restart the listen loop.
-  listenId <- forkIO (listenLoop mServer)
-  cmdId <- forkIO (execCmdsLoop mServer)
-  modifyMVar_ mServer (\s -> return $ s {sListenThread = Just listenId,
+  listenId <- forkIO (listenLoop mIrc)
+  cmdId <- forkIO (execCmdsLoop mIrc)
+  modifyMVar_ mIrc (\s -> return $ s {sListenThread = Just listenId,
                         sCmdThread = Just cmdId})
-  return mServer
+  return mIrc
 
 {-
 -- |Reconnects to the server.
@@ -217,8 +216,8 @@ genUnique e = do
   return (u, e)
 
 genUniqueMap :: [IrcEvent] -> IO (Map.Map Unique IrcEvent)
-genUniqueMap events = do
-  uEvents <- mapM genUnique events
+genUniqueMap evts = do
+  uEvents <- mapM genUnique evts
   return $ Map.fromList uEvents
 
 toServer :: IrcConfig -> Handle -> Chan SIrcCommand -> Bool -> IO IrcServer
@@ -252,14 +251,14 @@ execCmdsLoop mIrc = do
   server <- readMVar mIrc
   cmd <- readChan $ sCmdChan server
   case cmd of (SIrcAddEvent uEvent)     -> do
-                swapMVar mIrc (server {sEvents =
+                _ <- swapMVar mIrc (server {sEvents =
                   (uncurry Map.insert uEvent) (sEvents server)})
                 execCmdsLoop mIrc
-              (SIrcChangeEvents events) -> do
-                swapMVar mIrc (server {sEvents = events})
+              (SIrcChangeEvents evts) -> do
+                _ <- swapMVar mIrc (server {sEvents = evts})
                 execCmdsLoop mIrc
               (SIrcRemoveEvent key)     -> do
-                swapMVar mIrc (server {sEvents =
+                _ <- swapMVar mIrc (server {sEvents =
                   Map.delete key (sEvents server)})
                 execCmdsLoop mIrc
 
@@ -275,11 +274,11 @@ listenLoop s = do
   if (eof /= Just False)
     then do
       let comp   = (\a -> a `eqEvent` (Disconnect undefined))
-          events = Map.filter comp (sEvents server)
+          evts = Map.filter comp (sEvents server)
           eventCall = (\obj -> (eventFuncD $ snd obj) s)
       modifyMVar_ s (\serv -> return $ serv {sSock = Nothing})
-      debugWrite server $ B.pack $ show $ length $ Map.toList events
-      mapM_ eventCall (Map.toList events)
+      debugWrite server $ B.pack $ show $ length $ Map.toList evts
+      mapM_ eventCall (Map.toList evts)
     else do
       line <- B.hGetLine h
 
@@ -310,8 +309,7 @@ joinChans server msg =
     then do mapM_ (\chan -> write server $ "JOIN " `B.append` chan) (sChannels server)
             return server {sChannels = []}
     else return server
-  where h    = fromJust $ sSock server
-        code = mCode msg
+  where code = mCode msg
 
 pong :: IrcServer -> IrcMessage -> IO IrcServer
 pong server msg =
@@ -321,8 +319,7 @@ pong server msg =
       return server
     else return server
 
-  where h       = fromJust $ sSock server
-        pingMsg = mMsg msg
+  where pingMsg = mMsg msg
         code    = mCode msg
 
 trackChanges :: IrcServer -> IrcMessage -> IO IrcServer
@@ -373,7 +370,6 @@ ctcpHandler mServ iMsg
       (MNotice origin ("\x01TIME " `B.append`
         (B.pack time) `B.append` "\x01"))
   | "\x01PING " `B.isPrefixOf` msg = do
-    server <- readMVar mServ
 
     sendCmd mServ
       (MNotice origin msg)
@@ -386,10 +382,10 @@ events :: MIrc -> IrcEvent -> IrcMessage -> IO ()
 events mServ event msg = do
   server <- readMVar mServ
   let comp   = (`eqEvent` event)
-      events = Map.filter comp (sEvents server)
+      evts = Map.filter comp (sEvents server)
       eventCall = (\obj -> (eventFunc $ snd obj) mServ msg)
 
-  mapM_ eventCall (Map.toList events)
+  mapM_ eventCall (Map.toList evts)
 
 
 callEvents :: MIrc -> IrcMessage -> IO ()
@@ -502,10 +498,10 @@ addEvent mIrc event = do
 
 
 changeEvents :: MIrc -> [IrcEvent] -> IO ()
-changeEvents mIrc events = do
+changeEvents mIrc evts = do
   s <- readMVar mIrc
 
-  uniqueEvents <- genUniqueMap events
+  uniqueEvents <- genUniqueMap evts
   writeChan (sCmdChan s) (SIrcChangeEvents uniqueEvents)
 
 remEvent :: MIrc -> Unique -> IO ()
@@ -536,7 +532,7 @@ mkDefaultConfig addr nick = IrcConfig
   , cEvents   = []
   , cCTCPVersion = "SimpleIRC v0.2"
   , cCTCPTime    = fmap (formatTime defaultTimeLocale "%c") getZonedTime
-  , cPingTimeoutInterval = 350 * 10^6
+  , cPingTimeoutInterval = 350 * 10^(6::Int)
   }
 
 -- MIrc Accessors
