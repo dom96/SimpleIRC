@@ -103,6 +103,7 @@ data IrcServer = IrcServer
   , sCTCPVersion  :: String
   , sCTCPTime     :: IO String
   , sPingTimeoutInterval :: Int
+  , sFloodControlTimestamp :: UTCTime
   }
 
 -- When adding events here, remember add them in callEvents and in eventFunc
@@ -228,12 +229,13 @@ genUniqueMap evts = do
 toServer :: IrcConfig -> Handle -> Chan SIrcCommand -> Bool -> IO IrcServer
 toServer config h cmdChan debug = do
   uniqueEvents <- genUniqueMap $ internalNormEvents ++ cEvents config
+  now <- getCurrentTime
 
   return $ IrcServer (B.pack $ cAddr config) (cPort config)
               (B.pack $ cNick config) (B.pack `fmap` cPass config) (B.pack $ cUsername config)
               (B.pack $ cRealname config) (map B.pack $ cChannels config)
               uniqueEvents (Just h) Nothing Nothing cmdChan debug
-              (cCTCPVersion config) (cCTCPTime config) (cPingTimeoutInterval config)
+              (cCTCPVersion config) (cCTCPTime config) (cPingTimeoutInterval config) now
 
 greetServer :: IrcServer -> IO IrcServer
 greetServer server = do
@@ -474,8 +476,7 @@ sendRaw mServ msg = do
 
 -- |Sends a message to a channel
 
--- |Please note: As of now this function doesn't provide flood control.
--- So be careful with \\n.
+-- |Implements flood control according to RFC 2813, chapter 5.8
 sendMsg :: MIrc
            -> B.ByteString -- ^ Channel
            -> B.ByteString -- ^ Message
@@ -483,7 +484,14 @@ sendMsg :: MIrc
 sendMsg mServ chan msg =
   mapM_ s lins
   where lins = B.lines msg
-        s m = sendCmd mServ (MPrivmsg chan m)
+        s m = do
+          now <- getCurrentTime
+          stamp <- (getFloodControlTimestamp mServ)
+          let latest = addUTCTime 2 $ max now stamp
+              diff = diffUTCTime latest now
+          setFloodControlTimestamp mServ latest
+          when (diff > 10) (threadDelay $ 1000000 * (round diff - 10))
+          sendCmd mServ (MPrivmsg chan m)
 
 
 sendCmd :: MIrc
@@ -581,3 +589,14 @@ getRealname mIrc = do
 
   return $ sRealname s
 
+-- |Returns the timestamp of the last sent message, possibly with flood control penalty
+getFloodControlTimestamp :: MIrc -> IO UTCTime
+getFloodControlTimestamp mIrc = do
+  s <- readMVar mIrc
+
+  return $ sFloodControlTimestamp s
+
+-- |Updates the value of the flood control timestamp
+setFloodControlTimestamp :: MIrc -> UTCTime -> IO ()
+setFloodControlTimestamp mIrc stamp =
+  modifyMVar_ mIrc (\i -> return i { sFloodControlTimestamp = stamp })
