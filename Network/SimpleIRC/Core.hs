@@ -8,15 +8,15 @@
 -- Portability : portable
 --
 -- For information on how to use this library please take a look at the readme file on github, <http://github.com/dom96/SimpleIRC#readme>.
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings, CPP #-}
 module Network.SimpleIRC.Core
-  ( 
+  (
     -- * Types
-    MIrc 
+    MIrc
   , EventFunc
   , IrcConfig(..)
   , IrcEvent(..)
-    
+
     -- * Functions
   , connect
   , disconnect
@@ -27,8 +27,8 @@ module Network.SimpleIRC.Core
   , addEvent
   , changeEvents
   , remEvent
-  , defaultConfig
-  
+  , mkDefaultConfig
+
    -- * Accessors
   , getChannels
   , getNickname
@@ -36,8 +36,12 @@ module Network.SimpleIRC.Core
   , getPort
   , getUsername
   , getRealname
+#ifdef TEST
+  , IrcServer(..)
+  , listenLoop
+#endif
   ) where
-  
+
 import Network
 import System.IO
 import Data.Maybe
@@ -45,18 +49,19 @@ import Data.List (delete)
 import Data.Char (isNumber)
 import Control.Monad
 import Control.Concurrent
-import Control.Concurrent.Chan
-import Control.Concurrent.MVar
 import Network.SimpleIRC.Messages
 import Data.Unique
-import System.IO.Error
+import Control.Exception (try)
 import System.Timeout
 import Data.Time
 import System.Locale
 import qualified Data.ByteString.Char8 as B
 import qualified Data.Map as Map
+import qualified Data.Foldable as Foldable
 
+internalEvents :: [IrcServer -> IrcMessage -> IO IrcServer]
 internalEvents     = [joinChans, pong, trackChanges]
+internalNormEvents :: [IrcEvent]
 internalNormEvents = [Privmsg ctcpHandler]
 
 type MIrc = MVar IrcServer
@@ -98,12 +103,13 @@ data IrcServer = IrcServer
   , sCTCPVersion  :: String
   , sCTCPTime     :: IO String
   , sPingTimeoutInterval :: Int
+  , sFloodControlTimestamp :: UTCTime
   }
 
 -- When adding events here, remember add them in callEvents and in eventFunc
 -- AND also in the Show instance and Eq instance
 
-data IrcEvent = 
+data IrcEvent =
     Privmsg EventFunc -- ^ PRIVMSG
   | Numeric EventFunc -- ^ Numeric, 001, 002, 372 etc.
   | Ping EventFunc    -- ^ PING
@@ -119,7 +125,7 @@ data IrcEvent =
   | RawMsg EventFunc  -- ^ This event gets called on every message received
   | Disconnect (MIrc -> IO ()) -- ^ This event gets called whenever the
                                     --   connection with the server is dropped
-  
+
 instance Show IrcEvent where
   show (Privmsg _) = "IrcEvent - Privmsg"
   show (Numeric _) = "IrcEvent - Numeric"
@@ -146,24 +152,24 @@ connect :: IrcConfig       -- ^ Configuration
 connect config threaded debug = try $ do
   (when debug $
     B.putStrLn $ "Connecting to " `B.append` B.pack (cAddr config))
-  
+
   h <- connectTo (cAddr config) (PortNumber $ fromIntegral $ cPort config)
   hSetBuffering h NoBuffering
-  
+
   cmdChan <- newChan
-  
+
   server <- toServer config h cmdChan debug
   -- Initialize connection with the server
-  greetServer server
-  
+  _ <- greetServer server
+
   -- Create a new MVar
   res <- newMVar server
-  
+
   -- Start the loops, listen and exec cmds
   if threaded
     then do listenId <- forkIO (listenLoop res)
-            cmdId <- forkIO (execCmdsLoop res)
-            modifyMVar_ res (\srv -> return $ srv {sListenThread = Just listenId}) 
+            _ <- forkIO (execCmdsLoop res)
+            modifyMVar_ res (\srv -> return $ srv {sListenThread = Just listenId})
             return res
     else do listenLoop res
             return res
@@ -174,39 +180,38 @@ disconnect :: MIrc
               -> IO ()
 disconnect server quitMsg = do
   s <- readMVar server
-  
-  let h = fromJust $ sSock s
+
   write s $ "QUIT :" `B.append` quitMsg
   return ()
 
 -- |Reconnects to the server.
 reconnect :: MIrc -> IO (Either IOError MIrc)
-reconnect mServer = try $ do
-  server <- readMVar mServer
-  
+reconnect mIrc = try $ do
+  server <- readMVar mIrc
+
   h <- connectTo (B.unpack $ sAddr server) (PortNumber $ fromIntegral $ sPort server)
   hSetBuffering h NoBuffering
-  modifyMVar_ mServer (\s -> return $ s {sSock = Just h})
+  modifyMVar_ mIrc (\s -> return $ s {sSock = Just h})
 
   -- Initialize connection with the server
-  withMVar mServer greetServer
+  _ <- withMVar mIrc greetServer
 
   -- Restart the listen loop.
-  listenId <- forkIO (listenLoop mServer)
-  cmdId <- forkIO (execCmdsLoop mServer)
-  modifyMVar_ mServer (\s -> return $ s {sListenThread = Just listenId,
+  listenId <- forkIO (listenLoop mIrc)
+  cmdId <- forkIO (execCmdsLoop mIrc)
+  modifyMVar_ mIrc (\s -> return $ s {sListenThread = Just listenId,
                         sCmdThread = Just cmdId})
-  return mServer
+  return mIrc
 
 {-
 -- |Reconnects to the server.
 reconnect :: MIrc -> IO (Either IOError MIrc)
 reconnect server = do
   s <- readMVar server
-  
-  let conf = IrcConfig (B.unpack $ sAddr s) (sPort s) 
-                       (B.unpack $ sNickname s) (B.unpack $ sUsername s) 
-                       (B.unpack $ sRealname s) (map (B.unpack) (sChannels s)) 
+
+  let conf = IrcConfig (B.unpack $ sAddr s) (sPort s)
+                       (B.unpack $ sNickname s) (B.unpack $ sUsername s)
+                       (B.unpack $ sRealname s) (map (B.unpack) (sChannels s))
                        (elems $ sEvents s) (sCTCPVersion s) (sCTCPTime s)
   connect conf True (sDebug s)
 -}
@@ -217,19 +222,20 @@ genUnique e = do
   return (u, e)
 
 genUniqueMap :: [IrcEvent] -> IO (Map.Map Unique IrcEvent)
-genUniqueMap events = do
-  uEvents <- mapM genUnique events
+genUniqueMap evts = do
+  uEvents <- mapM genUnique evts
   return $ Map.fromList uEvents
 
 toServer :: IrcConfig -> Handle -> Chan SIrcCommand -> Bool -> IO IrcServer
 toServer config h cmdChan debug = do
   uniqueEvents <- genUniqueMap $ internalNormEvents ++ cEvents config
+  now <- getCurrentTime
 
   return $ IrcServer (B.pack $ cAddr config) (cPort config)
-              (B.pack $ cNick config) (B.pack `fmap` cPass config) (B.pack $ cUsername config) 
-              (B.pack $ cRealname config) (map B.pack $ cChannels config) 
+              (B.pack $ cNick config) (B.pack `fmap` cPass config) (B.pack $ cUsername config)
+              (B.pack $ cRealname config) (map B.pack $ cChannels config)
               uniqueEvents (Just h) Nothing Nothing cmdChan debug
-              (cCTCPVersion config) (cCTCPTime config) (cPingTimeoutInterval config)
+              (cCTCPVersion config) (cCTCPTime config) (cPingTimeoutInterval config) now
 
 greetServer :: IrcServer -> IO IrcServer
 greetServer server = do
@@ -239,7 +245,7 @@ greetServer server = do
   write server $ "NICK " `B.append` nick
   write server $ "USER " `B.append` user `B.append` " " `B.append`
       user `B.append` " " `B.append` addr `B.append` " :" `B.append` real
-  
+
   return server
   where nick = sNickname server
         mpass = sPassword server
@@ -252,14 +258,14 @@ execCmdsLoop mIrc = do
   server <- readMVar mIrc
   cmd <- readChan $ sCmdChan server
   case cmd of (SIrcAddEvent uEvent)     -> do
-                swapMVar mIrc (server {sEvents = 
-                  (uncurry Map.insert uEvent) (sEvents server)}) 
+                _ <- swapMVar mIrc (server {sEvents =
+                  (uncurry Map.insert uEvent) (sEvents server)})
                 execCmdsLoop mIrc
-              (SIrcChangeEvents events) -> do
-                swapMVar mIrc (server {sEvents = events}) 
+              (SIrcChangeEvents evts) -> do
+                _ <- swapMVar mIrc (server {sEvents = evts})
                 execCmdsLoop mIrc
               (SIrcRemoveEvent key)     -> do
-                swapMVar mIrc (server {sEvents = 
+                _ <- swapMVar mIrc (server {sEvents =
                   Map.delete key (sEvents server)})
                 execCmdsLoop mIrc
 
@@ -270,39 +276,38 @@ listenLoop s = do
 
   let h = fromJust $ sSock server
   eof <- timeout (sPingTimeoutInterval server) $ hIsEOF h
-  
+
   -- If EOF then we are disconnected
   if (eof /= Just False)
     then do
-      let comp   = (\a -> a `eqEvent` (Disconnect undefined))
-          events = Map.filter comp (sEvents server)
-          eventCall = (\obj -> (eventFuncD $ snd obj) s)
       modifyMVar_ s (\serv -> return $ serv {sSock = Nothing})
-      debugWrite server $ B.pack $ show $ length $ Map.toList events
-      mapM_ eventCall (Map.toList events)
+      Foldable.mapM_ (callDisconnectFunction s) (sEvents server)
     else do
       line <- B.hGetLine h
-      
+
       server1 <- takeMVar s
-      
+
       -- Print the received line.
       debugWrite server1 $ (B.pack ">> ") `B.append` line
-      
+
       -- Call the internal events
       newServ <- foldM (\sr f -> f sr (parse line)) server1 internalEvents
-      
+
       putMVar s newServ -- Put the MVar back.
-      
+
       let parsed = (parse line)
       -- Call the events
       callEvents s parsed
 
       -- Call the RawMsg Events.
       events s (RawMsg undefined) parsed
-      
+
 
       listenLoop s
-    
+  where
+    callDisconnectFunction mIrc (Disconnect f) = f mIrc
+    callDisconnectFunction _ _ = return ()
+
 -- Internal Events - They can edit the server
 joinChans :: IrcServer -> IrcMessage -> IO IrcServer
 joinChans server msg =
@@ -310,8 +315,7 @@ joinChans server msg =
     then do mapM_ (\chan -> write server $ "JOIN " `B.append` chan) (sChannels server)
             return server {sChannels = []}
     else return server
-  where h    = fromJust $ sSock server
-        code = mCode msg
+  where code = mCode msg
 
 pong :: IrcServer -> IrcMessage -> IO IrcServer
 pong server msg =
@@ -320,9 +324,8 @@ pong server msg =
       write server $ "PONG :" `B.append` pingMsg
       return server
     else return server
-    
-  where h       = fromJust $ sSock server
-        pingMsg = mMsg msg
+
+  where pingMsg = mMsg msg
         code    = mCode msg
 
 trackChanges :: IrcServer -> IrcMessage -> IO IrcServer
@@ -338,21 +341,21 @@ trackChanges server msg
         newNick = mMsg msg
     if nick == sNickname server
       then return server { sNickname = newNick }
-      else return server 
-  | code == "KICK" = do 
+      else return server
+  | code == "KICK" = do
     let nick = (fromJust $ mOther msg) !! 0
         chan = fromJust $ mChan msg
     if nick == sNickname server
       then return server { sChannels = delete chan (sChannels server) }
       else return server
-  | code == "PART" = do 
+  | code == "PART" = do
     let nick = fromJust $ mNick msg
         chan = mMsg msg
     if nick == sNickname server
       then return server { sChannels = delete chan (sChannels server) }
       else return server
   | otherwise = return server
-  
+
   where code = mCode msg
 
 -- Internal normal events
@@ -360,21 +363,20 @@ ctcpHandler :: EventFunc
 ctcpHandler mServ iMsg
   | msg == "\x01VERSION\x01" = do
     server <- readMVar mServ
-    
+
     sendCmd mServ
       (MNotice origin ("\x01VERSION " `B.append`
         B.pack (sCTCPVersion server) `B.append` "\x01"))
 
   | msg == "\x01TIME\x01" = do
     server <- readMVar mServ
-    
+
     time <- sCTCPTime server
     sendCmd mServ
       (MNotice origin ("\x01TIME " `B.append`
         (B.pack time) `B.append` "\x01"))
   | "\x01PING " `B.isPrefixOf` msg = do
-    server <- readMVar mServ
-    
+
     sendCmd mServ
       (MNotice origin msg)
 
@@ -386,23 +388,23 @@ events :: MIrc -> IrcEvent -> IrcMessage -> IO ()
 events mServ event msg = do
   server <- readMVar mServ
   let comp   = (`eqEvent` event)
-      events = Map.filter comp (sEvents server)
+      evts = Map.filter comp (sEvents server)
       eventCall = (\obj -> (eventFunc $ snd obj) mServ msg)
 
-  mapM_ eventCall (Map.toList events)
+  mapM_ eventCall (Map.toList evts)
 
 
 callEvents :: MIrc -> IrcMessage -> IO ()
 callEvents mServ msg
   | mCode msg == "PRIVMSG"     =
     events mServ (Privmsg undefined) msg
-    
+
   | mCode msg == "PING"        =
     events mServ (Ping undefined) msg
 
   | mCode msg == "JOIN"        =
     events mServ (Join undefined) msg
-  
+
   | mCode msg == "PART"        =
     events mServ (Part undefined) msg
 
@@ -429,10 +431,11 @@ callEvents mServ msg
 
   | B.all isNumber (mCode msg) =
     events mServ (Numeric undefined) msg
-  
-  | otherwise                = return ()
-    
 
+  | otherwise                = return ()
+
+
+eqEvent :: IrcEvent -> IrcEvent -> Bool
 (Privmsg _) `eqEvent` (Privmsg _) = True
 (Numeric _) `eqEvent` (Numeric _) = True
 (Ping    _) `eqEvent` (Ping    _) = True
@@ -463,8 +466,7 @@ eventFunc (Quit    f) = f
 eventFunc (Nick    f) = f
 eventFunc (Notice  f) = f
 eventFunc (RawMsg  f) = f
-
-eventFuncD (Disconnect  f) = f
+eventFunc (Disconnect _) = error "SimpleIRC: unexpected event"
 
 -- |Sends a raw command to the server
 sendRaw :: MIrc -> B.ByteString -> IO ()
@@ -474,18 +476,24 @@ sendRaw mServ msg = do
 
 -- |Sends a message to a channel
 
--- |Please note: As of now this function doesn't provide flood control.
--- So be careful with \\n.
-sendMsg :: MIrc 
+-- |Implements flood control according to RFC 2813, chapter 5.8
+sendMsg :: MIrc
            -> B.ByteString -- ^ Channel
            -> B.ByteString -- ^ Message
            -> IO ()
 sendMsg mServ chan msg =
   mapM_ s lins
   where lins = B.lines msg
-        s m = sendCmd mServ (MPrivmsg chan m)
-        
-        
+        s m = do
+          now <- getCurrentTime
+          stamp <- (getFloodControlTimestamp mServ)
+          let latest = addUTCTime 2 $ max now stamp
+              diff = diffUTCTime latest now
+          setFloodControlTimestamp mServ latest
+          when (diff > 10) (threadDelay $ 1000000 * (round diff - 10))
+          sendCmd mServ (MPrivmsg chan m)
+
+
 sendCmd :: MIrc
            -> Command -- Command to send
            -> IO ()
@@ -501,10 +509,10 @@ addEvent mIrc event = do
 
 
 changeEvents :: MIrc -> [IrcEvent] -> IO ()
-changeEvents mIrc events = do
+changeEvents mIrc evts = do
   s <- readMVar mIrc
 
-  uniqueEvents <- genUniqueMap events
+  uniqueEvents <- genUniqueMap evts
   writeChan (sCmdChan s) (SIrcChangeEvents uniqueEvents)
 
 remEvent :: MIrc -> Unique -> IO ()
@@ -522,10 +530,12 @@ write s msg = do
   debugWrite s $ "<< " `B.append` msg `B.append` "\\r\\n"
   B.hPutStr h (msg `B.append` "\r\n")
   where h = fromJust $ sSock s
-  
 
-defaultConfig = IrcConfig
-  { cPort     = 6667
+mkDefaultConfig :: String -> String -> IrcConfig
+mkDefaultConfig addr nick = IrcConfig
+  { cAddr     = addr
+  , cPort     = 6667
+  , cNick     = nick
   , cPass     = Nothing
   , cUsername = "simpleirc"
   , cRealname = "SimpleIRC Bot"
@@ -533,49 +543,60 @@ defaultConfig = IrcConfig
   , cEvents   = []
   , cCTCPVersion = "SimpleIRC v0.2"
   , cCTCPTime    = fmap (formatTime defaultTimeLocale "%c") getZonedTime
-  , cPingTimeoutInterval = 350 * 10^6
+  , cPingTimeoutInterval = 350 * 10^(6::Int)
   }
-  
+
 -- MIrc Accessors
 -- |Returns a list of channels currently joined.
 getChannels :: MIrc -> IO [B.ByteString]
 getChannels mIrc = do
   s <- readMVar mIrc
-  
+
   return $ sChannels s
 
 -- |Returns the current nickname.
 getNickname :: MIrc -> IO B.ByteString
 getNickname mIrc = do
   s <- readMVar mIrc
-  
+
   return $ sNickname s
-  
+
 -- |Returns the address
 getAddress :: MIrc -> IO B.ByteString
 getAddress mIrc = do
   s <- readMVar mIrc
-  
-  return $ sAddr s  
+
+  return $ sAddr s
 
 -- |Returns the address
 getPort :: MIrc -> IO Int
 getPort mIrc = do
   s <- readMVar mIrc
-  
+
   return $ sPort s
 
 -- |Returns the User name
 getUsername :: MIrc -> IO B.ByteString
 getUsername mIrc = do
   s <- readMVar mIrc
-  
-  return $ sUsername s  
+
+  return $ sUsername s
 
 -- |Returns the Real name
 getRealname :: MIrc -> IO B.ByteString
 getRealname mIrc = do
   s <- readMVar mIrc
-  
-  return $ sRealname s  
 
+  return $ sRealname s
+
+-- |Returns the timestamp of the last sent message, possibly with flood control penalty
+getFloodControlTimestamp :: MIrc -> IO UTCTime
+getFloodControlTimestamp mIrc = do
+  s <- readMVar mIrc
+
+  return $ sFloodControlTimestamp s
+
+-- |Updates the value of the flood control timestamp
+setFloodControlTimestamp :: MIrc -> UTCTime -> IO ()
+setFloodControlTimestamp mIrc stamp =
+  modifyMVar_ mIrc (\i -> return i { sFloodControlTimestamp = stamp })
