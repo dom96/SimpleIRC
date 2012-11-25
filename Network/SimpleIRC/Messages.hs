@@ -186,6 +186,6 @@ showCommand (MNick    nick)                 = "NICK " `B.append` nick
 showCommand (MNotice  chan msg)             = "NOTICE " `B.append` chan `B.append`
                                               " :" `B.append` msg
 showCommand (MAction  chan msg)             = showCommand $ MPrivmsg chan
-                                              ("\x01 ACTION " `B.append` msg
+                                              ("\x01ACTION " `B.append` msg
                                               `B.append` "\x01")
 

@@ -15,12 +15,11 @@ onMessage s m
         
 events = [(Privmsg onMessage)]
 
-ninthbit = defaultConfig
-  { cAddr     = "irc.freenode.net" -- Address
-  , cNick     = "SimpleIRCBot" -- Nickname
-  , cChannels = ["#()"] -- Channels to join on connect
-  , cEvents   = events -- Events to bind
-  }
+freenode = (mkDefaultConfig "irc.freenode.net" "SimpleIRCBot")
+            {
+            , cChannels = ["#()"] -- Channels to join on connect
+            , cEvents   = events -- Events to bind
+            }
 
 main = do
-  connect ninthbit False True
+  connect freenode False True

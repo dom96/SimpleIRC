@@ -26,7 +26,8 @@ onMessage s m
         
 events = [(Privmsg onMessage)]
 
-freenode = defaultConfig { cAddr = "irc.freenode.net", cNick = "SimpleIRCBot", cChannels = ["#()", "#HSBotTest"], cEvents = events}
+freenode = (mkDefaultConfig "irc.freenode.net" "SimpleIRCBot")
+              { cChannels = ["#()", "#HSBotTest"], cEvents = events}
 
 main = do
   connect freenode False True

@@ -25,14 +25,10 @@ onMessage s m
         
 events = [(Privmsg onMessage), (Privmsg onMessage1)]
 
-freenode = IrcConfig 
-  "irc.freenode.net" -- Address
-  6667 -- Port
-  "SimpleIRCBot" -- Nickname
-  "simpleirc"  -- Username
-  "simple irc" -- Realname
-  ["#()"] -- Channels to join on connect
-  events -- Events to bind
+freenode = (mkDefaultConfig "irc.freenode.net" "SimpleIRCBot") {
+    cChannels = ["#()"], -- Channels to join on connect
+    cEvents = events -- Events to bind
+  }
 
 main = do
-  connect freenode False
+  connect freenode False True

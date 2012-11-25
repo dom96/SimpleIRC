@@ -16,7 +16,8 @@ onDisconnect mIrc = do
 
 events = [(Disconnect onDisconnect)]
 
-freenode = defaultConfig { cAddr = "irc.ninthbit.net", cNick = "SimpleIRCBot", cChannels = ["#bots"], cEvents = events}
+freenode = (mkDefaultConfig "irc.ninthbit.net" "SimpleIRCBot")
+             { cChannels = ["#bots"], cEvents = events }
 
 main = do
   connect freenode True True

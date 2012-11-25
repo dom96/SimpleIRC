@@ -23,7 +23,8 @@ events = [(Privmsg privmsgTest)
          ,(Privmsg quitMsg)
          ]
 
-freenode = defaultConfig { cAddr = "irc.freenode.net", cNick = "SimpleIRCBot", cChannels = ["#()"], cEvents = events}
+freenode = (mkDefaultConfig "irc.freenode.net" "SimpleIRCBot") 
+              {cChannels = ["#()"], cEvents = events}
 
 main = do
   --connect freenode True True
