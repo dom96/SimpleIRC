@@ -7,7 +7,7 @@ Author:        Dominik Picheta <dominikpicheta@googlemail.com>
 Copyright:     (c) 2010 Dominik Picheta
 License:       BSD3
 License-file:  license
-Homepage: http://github.com/dom96/SimpleIRC  
+Homepage: http://github.com/dom96/SimpleIRC
 Build-type:    Simple
 Stability:     provisional
 Cabal-version: >= 1.6
