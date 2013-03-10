@@ -20,6 +20,8 @@ onMessage s m
     sendMsg s chan (B.pack $ show chans)
   | msg == "|part" = do 
     sendCmd s (MPart chan "BAI")
+  | B.isPrefixOf "|join" msg = do
+    sendCmd s (MJoin (B.drop 1 $ B.dropWhile (/= ' ') msg) Nothing)
   | otherwise = return ()
   where chan = fromJust $ mChan m
         msg = mMsg m

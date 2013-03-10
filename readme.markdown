@@ -36,10 +36,10 @@ This function will send "hello" to a channel whenever someone says "|hello".
 
 Then you can pass `[(Privmsg onMessage)]` to IrcConfig.
 
-Take a look at Network/SimpleIRC/Types.hs to see other events.
+Take a look at the ``IrcEvent`` type in Network/SimpleIRC/Core.hs to see other events.
 
 There is one(as of now) event which doesn't take a EventFunc function.
-You should be able to figure out what type of function it does take by looking at Network/SimpleIRC/Types.hs
+You should be able to figure out what type of function it does take by looking at Network/SimpleIRC/Core.hs
 
 After you create a IrcConfig you can then call `connect`. Connect takes two arguments; the IrcConfig and a boolean.
 The boolean specifies whether to run the listenLoop in a new thread.

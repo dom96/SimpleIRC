@@ -541,7 +541,7 @@ mkDefaultConfig addr nick = IrcConfig
   , cRealname = "SimpleIRC Bot"
   , cChannels = []
   , cEvents   = []
-  , cCTCPVersion = "SimpleIRC v0.2"
+  , cCTCPVersion = "SimpleIRC v0.3"
   , cCTCPTime    = fmap (formatTime defaultTimeLocale "%c") getZonedTime
   , cPingTimeoutInterval = 350 * 10^(6::Int)
   }
