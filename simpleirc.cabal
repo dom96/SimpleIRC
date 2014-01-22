@@ -10,7 +10,7 @@ License-file:  license
 Homepage: http://github.com/dom96/SimpleIRC  
 Build-type:    Simple
 Stability:     provisional
-Cabal-version: >= 1.6
+Cabal-version: >= 1.8
 Description:
   Simple IRC Library. This IRC Library aims to be simple and lightweight.
 
@@ -21,7 +21,7 @@ Source-repository head
 Source-repository this
   Type:     git
   Location: git://github.com/dom96/SimpleIRC.git
-  tag:      v0.2.1
+  tag:      v0.3.0
 
 Library
   Build-depends:
@@ -36,7 +36,7 @@ Library
     Network.SimpleIRC.Core
     Network.SimpleIRC.Messages
   ghc-options:
-      -Wall -Werror
+      -Wall
 
 test-suite spec
   type:
