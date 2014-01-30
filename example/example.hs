@@ -12,12 +12,11 @@ onMessage s m
   | otherwise = putStrLn $ show m
   where chan = fromJust $ mChan m
         msg = mMsg m
-        
+
 events = [(Privmsg onMessage)]
 
 freenode = (mkDefaultConfig "irc.freenode.net" "SimpleIRCBot")
-            {
-            , cChannels = ["#()"] -- Channels to join on connect
+            { cChannels = ["#()"] -- Channels to join on connect
             , cEvents   = events -- Events to bind
             }
 
