@@ -54,7 +54,9 @@ import Data.Unique
 import Control.Exception (try)
 import System.Timeout
 import Data.Time
+#if ! MIN_VERSION_time(1,5,0)
 import System.Locale
+#endif
 import qualified Data.ByteString.Char8 as B
 import qualified Data.Map as Map
 import qualified Data.Foldable as Foldable
