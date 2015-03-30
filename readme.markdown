@@ -25,14 +25,18 @@ But in the more likely event when you do want to specify functions, you can do t
 EventFunc has the type of `(IrcServer -> IrcMessage -> IO ())`.
 For Haskell beginners that's a function which takes two arguments; an IrcServer and an IrcMessage, and which returns a IO ()
 
-    onMessage server msg
-      | m == "|hello" = do
-        sendMsg s chan "hello!"
-      | otherwise = return ()
-      where chan = fromJust $ mChan m
-            m    = mMsg msg
+    onMessage server message
+    | actualMessage == (B.pack "|hello") = do
+        sendMsg server channel "hello!"
+    | otherwise = return ()
+        where channel :: B.ByteString
+              channel = case mChan message of
+                   Just channel -> channel
+                   Nothing -> B.pack ""
+              actualMessage :: B.ByteString
+              actualMessage = mMsg message
 
-This function will send "hello" to a channel whenever someone says "|hello".
+This function will send "hello!" to a channel whenever someone says "|hello".
 
 Then you can pass `[(Privmsg onMessage)]` to IrcConfig.
 
