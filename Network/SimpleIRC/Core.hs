@@ -42,8 +42,9 @@ module Network.SimpleIRC.Core
 #endif
   ) where
 
-import Network
-import System.IO
+import Network.Connection
+import Network.Socket (HostName, PortNumber)
+
 import Data.Maybe
 import Data.List (delete)
 import Data.Char (isNumber)
@@ -51,7 +52,7 @@ import Control.Monad
 import Control.Concurrent
 import Network.SimpleIRC.Messages
 import Data.Unique
-import Control.Exception (try)
+import Control.Exception (try, SomeException)
 import System.Timeout
 import Data.Time
 #if ! MIN_VERSION_time(1,5,0)
@@ -71,6 +72,7 @@ type MIrc = MVar IrcServer
 data IrcConfig = IrcConfig
   { cAddr     :: String   -- ^ Server address to connect to
   , cPort     :: Int      -- ^ Server port to connect to
+  , cSecure   :: Bool     -- ^ Use secure transport
   , cNick     :: String   -- ^ Nickname
   , cPass     :: Maybe String -- ^ Optional server password
   , cUsername :: String   -- ^ Username
@@ -90,13 +92,14 @@ data SIrcCommand =
 data IrcServer = IrcServer
   { sAddr         :: B.ByteString
   , sPort         :: Int
+  , sSecure       :: Bool
   , sNickname     :: B.ByteString
   , sPassword     :: Maybe B.ByteString
   , sUsername     :: B.ByteString
   , sRealname     :: B.ByteString
   , sChannels     :: [B.ByteString]
   , sEvents       :: Map.Map Unique IrcEvent
-  , sSock         :: Maybe Handle
+  , sSock         :: Maybe Connection
   , sListenThread :: Maybe ThreadId
   , sCmdThread    :: Maybe ThreadId
   , sCmdChan      :: Chan SIrcCommand
@@ -146,6 +149,15 @@ instance Show IrcEvent where
 
 type EventFunc = (MIrc -> IrcMessage -> IO ())
 
+connect' :: HostName -> PortNumber -> Bool -> IO Connection
+connect' host port secure = do
+  ctx <- initConnectionContext
+  conn <- connectTo ctx $ ConnectionParams host port (tlsSettings secure) Nothing
+  return conn
+  where
+    tlsSettings True = Just $ TLSSettingsSimple True True False
+    tlsSettings False = Nothing
+
 -- |Connects to a server
 connect :: IrcConfig       -- ^ Configuration
            -> Bool         -- ^ Run in a new thread
@@ -155,12 +167,11 @@ connect config threaded debug = try $ do
   (when debug $
     B.putStrLn $ "Connecting to " `B.append` B.pack (cAddr config))
 
-  h <- connectTo (cAddr config) (PortNumber $ fromIntegral $ cPort config)
-  hSetBuffering h NoBuffering
+  conn <- connect' (cAddr config) (fromIntegral $ cPort config) (cSecure config)
 
   cmdChan <- newChan
 
-  server <- toServer config h cmdChan debug
+  server <- toServer config conn cmdChan debug
   -- Initialize connection with the server
   _ <- greetServer server
 
@@ -184,16 +195,16 @@ disconnect server quitMsg = do
   s <- readMVar server
 
   write s $ "QUIT :" `B.append` quitMsg
-  return ()
+  connectionClose (fromJust $ sSock s)
 
 -- |Reconnects to the server.
 reconnect :: MIrc -> IO (Either IOError MIrc)
 reconnect mIrc = try $ do
   server <- readMVar mIrc
 
-  h <- connectTo (B.unpack $ sAddr server) (PortNumber $ fromIntegral $ sPort server)
-  hSetBuffering h NoBuffering
-  modifyMVar_ mIrc (\s -> return $ s {sSock = Just h})
+  conn <- connect' (B.unpack $ sAddr server) (fromIntegral $ sPort server) (sSecure server)
+
+  modifyMVar_ mIrc (\s -> return $ s {sSock = Just conn})
 
   -- Initialize connection with the server
   _ <- withMVar mIrc greetServer
@@ -228,15 +239,15 @@ genUniqueMap evts = do
   uEvents <- mapM genUnique evts
   return $ Map.fromList uEvents
 
-toServer :: IrcConfig -> Handle -> Chan SIrcCommand -> Bool -> IO IrcServer
-toServer config h cmdChan debug = do
+toServer :: IrcConfig -> Connection -> Chan SIrcCommand -> Bool -> IO IrcServer
+toServer config conn cmdChan debug = do
   uniqueEvents <- genUniqueMap $ internalNormEvents ++ cEvents config
   now <- getCurrentTime
 
-  return $ IrcServer (B.pack $ cAddr config) (cPort config)
+  return $ IrcServer (B.pack $ cAddr config) (cPort config) (cSecure config)
               (B.pack $ cNick config) (B.pack `fmap` cPass config) (B.pack $ cUsername config)
               (B.pack $ cRealname config) (map B.pack $ cChannels config)
-              uniqueEvents (Just h) Nothing Nothing cmdChan debug
+              uniqueEvents (Just conn) Nothing Nothing cmdChan debug
               (cCTCPVersion config) (cCTCPTime config) (cPingTimeoutInterval config) now
 
 greetServer :: IrcServer -> IO IrcServer
@@ -276,17 +287,20 @@ listenLoop :: MIrc -> IO ()
 listenLoop s = do
   server <- readMVar s
 
-  let h = fromJust $ sSock server
-  eof <- timeout (sPingTimeoutInterval server) $ hIsEOF h
+  let c = fromJust $ sSock server
 
-  -- If EOF then we are disconnected
-  if (eof /= Just False)
-    then do
-      modifyMVar_ s (\serv -> return $ serv {sSock = Nothing})
-      Foldable.mapM_ (callDisconnectFunction s) (sEvents server)
-    else do
-      line <- B.hGetLine h
+  -- RFC 2812, max message line length
+  lineOrCleanup <- timeout (sPingTimeoutInterval server) (try $ connectionGetLine 512 c :: IO (Either SomeException B.ByteString))
 
+  case lineOrCleanup of
+    Nothing -> do
+      debugWrite server $ "Timeout reached"
+      cleanup server
+    Just (Left ex) -> do
+      debugWrite server $ B.pack $ "Exception caught: " ++ show ex
+      cleanup server
+
+    Just (Right line) -> do
       server1 <- takeMVar s
 
       -- Print the received line.
@@ -307,6 +321,9 @@ listenLoop s = do
 
       listenLoop s
   where
+    cleanup server = do
+      modifyMVar_ s (\serv -> return $ serv {sSock = Nothing})
+      Foldable.mapM_ (callDisconnectFunction s) (sEvents server)
     callDisconnectFunction mIrc (Disconnect f) = f mIrc
     callDisconnectFunction _ _ = return ()
 
@@ -530,13 +547,16 @@ debugWrite s msg =
 write :: IrcServer -> B.ByteString -> IO ()
 write s msg = do
   debugWrite s $ "<< " `B.append` msg `B.append` "\\r\\n"
-  B.hPutStr h (msg `B.append` "\r\n")
-  where h = fromJust $ sSock s
+  connectionPut conn msg'
+  where
+    conn = fromJust $ sSock s
+    msg' = msg `B.append` "\r\n"
 
 mkDefaultConfig :: String -> String -> IrcConfig
 mkDefaultConfig addr nick = IrcConfig
   { cAddr     = addr
   , cPort     = 6667
+  , cSecure   = False
   , cNick     = nick
   , cPass     = Nothing
   , cUsername = "simpleirc"
