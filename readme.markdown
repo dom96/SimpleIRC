@@ -27,7 +27,7 @@ For Haskell beginners that's a function which takes two arguments; an IrcServer 
 
     onMessage server msg
       | m == "|hello" = do
-        sendMsg s chan "hello!"
+        sendMsg server chan "hello!"
       | otherwise = return ()
       where chan = fromJust $ mChan m
             m    = mMsg msg
