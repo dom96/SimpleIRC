@@ -9,7 +9,8 @@
 --
 -- Messages (parsing) module
 --
-{-# LANGUAGE OverloadedStrings, DeriveDataTypeable #-}
+{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE OverloadedStrings  #-}
 module Network.SimpleIRC.Messages
   ( IrcMessage(..)
   , Command(..)
@@ -17,9 +18,10 @@ module Network.SimpleIRC.Messages
   , showCommand
   )
 where
+import           Control.Arrow         hiding (first)
 import qualified Data.ByteString.Char8 as B
-import Control.Arrow hiding (first)
-import Data.Typeable
+import           Data.Maybe            (mapMaybe)
+import           Data.Typeable
 
 -- PING :asimov.freenode.net
 -- :haskellTestBot!~test@host86-177-151-242.range86-177.btcentralplus.com JOIN :#()
@@ -56,6 +58,7 @@ data IrcMessage = IrcMessage
   , mChan   :: Maybe B.ByteString
   , mOrigin :: Maybe B.ByteString   -- ^ Origin of the message, this is mNick if a message was sent directly to the bot, otherwise if it got sent to the channel it's mChan.
   , mOther  :: Maybe [B.ByteString]
+  , mTags   :: [(B.ByteString, B.ByteString)]
   , mRaw    :: B.ByteString
   } deriving (Show, Typeable)
 
@@ -63,15 +66,16 @@ data IrcMessage = IrcMessage
 parse :: B.ByteString -> IrcMessage
 parse txt =
   case split of
-    [code, msg]                     -> parse2 code msg noCarriage
-    [first, code, msg]              -> parse3 first code msg noCarriage
-    [first, code, chan, msg]        -> parse4 first code chan msg noCarriage
-    [first, code, chan, other, msg] -> parse5 first code chan other msg noCarriage
-    server:code:nick:chan:other     -> parseOther server code nick chan other noCarriage
+    [code, msg]                     -> parse2 tags code msg noCarriage
+    [first, code, msg]              -> parse3 tags first code msg noCarriage
+    [first, code, chan, msg]        -> parse4 tags first code chan msg noCarriage
+    [first, code, chan, other, msg] -> parse5 tags first code chan other msg noCarriage
+    server:code:nick:chan:other     -> parseOther tags server code nick chan other noCarriage
     _                               -> error "SimpleIRC: unexpected message format"
 
-  where noCarriage = takeCarriageRet txt
-        split      = smartSplit noCarriage
+  where noCarriage   = takeCarriageRet rest
+        split        = smartSplit noCarriage
+        (tags, rest) = parseTags txt
 
 -- Nick, Host, Server
 parseFirst :: B.ByteString -> (Maybe B.ByteString, Maybe B.ByteString, Maybe B.ByteString, Maybe B.ByteString)
@@ -84,6 +88,16 @@ parseFirst first =
                else (Just nick, Nothing, Just user_host, Nothing)
     else (Nothing, Nothing, Nothing, Just $ dropColon first)
 
+parseTags :: B.ByteString -> ([(B.ByteString, B.ByteString)], B.ByteString)
+parseTags str
+  | "@" `B.isPrefixOf` str = (mapMaybe (lstToPair . B.split '=') $ B.split ';' tagPart, rest)
+  | otherwise = ([], str)
+  where
+    tagPart = B.drop 1 $ B.takeWhile (/= ' ') str
+    rest = B.drop (B.length tagPart + 2) str
+    lstToPair [a, b] = Just (a, b)
+    lstToPair _ = Nothing
+
 getOrigin :: Maybe B.ByteString -> B.ByteString -> B.ByteString
 getOrigin (Just nick) chan =
   if "#" `B.isPrefixOf` chan || "&" `B.isPrefixOf` chan || "+" `B.isPrefixOf` chan
@@ -92,49 +106,52 @@ getOrigin (Just nick) chan =
     else nick
 getOrigin Nothing chan = chan
 
-parse2 :: B.ByteString -> B.ByteString -> B.ByteString -> IrcMessage
-parse2 code msg =
+parse2 :: [(B.ByteString, B.ByteString)] -> B.ByteString -> B.ByteString -> B.ByteString -> IrcMessage
+parse2 tags code msg =
   IrcMessage Nothing Nothing Nothing Nothing code
-    (dropColon msg) Nothing Nothing Nothing
+    (dropColon msg) Nothing Nothing Nothing tags
 
-parse3 :: B.ByteString -> B.ByteString -> B.ByteString -> B.ByteString -> IrcMessage
-parse3 first code msg =
+parse3 :: [(B.ByteString, B.ByteString)] -> B.ByteString -> B.ByteString -> B.ByteString -> B.ByteString -> IrcMessage
+parse3 tags first code msg =
   let (nick, user, host, server) = parseFirst first
-  in IrcMessage nick user host server code (dropColon msg) Nothing Nothing Nothing
+  in IrcMessage nick user host server code (dropColon msg) Nothing Nothing Nothing tags
 
-parse4 :: B.ByteString
-       -> B.ByteString
-       -> B.ByteString
-       -> B.ByteString
-       -> B.ByteString
-       -> IrcMessage
-parse4 first code chan msg =
-  let (nick, user, host, server) = parseFirst first
-  in IrcMessage nick user host server code
-       (dropColon msg) (Just chan) (Just $ getOrigin nick chan) Nothing
-
-parse5 :: B.ByteString
+parse4 :: [(B.ByteString, B.ByteString)]
        -> B.ByteString
        -> B.ByteString
        -> B.ByteString
        -> B.ByteString
        -> B.ByteString
        -> IrcMessage
-parse5 first code chan other msg =
+parse4 tags first code chan msg =
   let (nick, user, host, server) = parseFirst first
   in IrcMessage nick user host server code
-    (dropColon msg) (Just chan) (Just $ getOrigin nick chan) (Just [other])
+       (dropColon msg) (Just chan) (Just $ getOrigin nick chan) Nothing tags
 
-parseOther :: B.ByteString
+parse5 :: [(B.ByteString, B.ByteString)]
+       -> B.ByteString
+       -> B.ByteString
+       -> B.ByteString
+       -> B.ByteString
+       -> B.ByteString
+       -> B.ByteString
+       -> IrcMessage
+parse5 tags first code chan other msg =
+  let (nick, user, host, server) = parseFirst first
+  in IrcMessage nick user host server code
+    (dropColon msg) (Just chan) (Just $ getOrigin nick chan) (Just [other]) tags
+
+parseOther :: [(B.ByteString, B.ByteString)]
+           -> B.ByteString
            -> B.ByteString
            -> B.ByteString
            -> B.ByteString
            -> [B.ByteString]
            -> B.ByteString
            -> IrcMessage
-parseOther server code nick chan other =
+parseOther tags server code nick chan other =
   IrcMessage (Just nick) Nothing Nothing (Just server) code
-    (B.unwords other) (Just chan) (Just $ getOrigin (Just nick) chan) (Just other)
+    (B.unwords other) (Just chan) (Just $ getOrigin (Just nick) chan) (Just other) tags
 
 smartSplit :: B.ByteString -> [B.ByteString]
 smartSplit txt =
@@ -188,4 +205,3 @@ showCommand (MNotice  chan msg)             = "NOTICE " `B.append` chan `B.appen
 showCommand (MAction  chan msg)             = showCommand $ MPrivmsg chan
                                               ("\x01ACTION " `B.append` msg
                                               `B.append` "\x01")
-
