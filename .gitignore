@@ -2,4 +2,4 @@
 *.o
 haddock/
 dist/
-
+.stack-work
