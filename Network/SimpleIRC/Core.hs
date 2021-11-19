@@ -8,7 +8,7 @@
 -- Portability : portable
 --
 -- For information on how to use this library please take a look at the readme file on github, <http://github.com/dom96/SimpleIRC#readme>.
-{-# LANGUAGE OverloadedStrings, CPP #-}
+{-# LANGUAGE OverloadedStrings, CPP, PatternGuards #-}
 module Network.SimpleIRC.Core
   (
     -- * Types
@@ -16,6 +16,7 @@ module Network.SimpleIRC.Core
   , EventFunc
   , IrcConfig(..)
   , IrcEvent(..)
+  , SaslMechanism(..)
 
     -- * Functions
   , connect
@@ -51,6 +52,7 @@ import Data.Char (isNumber)
 import Control.Monad
 import Control.Concurrent
 import Network.SimpleIRC.Messages
+import Network.SimpleIRC.Sasl
 import Data.Unique
 import Control.Exception (try, SomeException)
 import System.Timeout
@@ -63,7 +65,7 @@ import qualified Data.Map as Map
 import qualified Data.Foldable as Foldable
 
 internalEvents :: [IrcServer -> IrcMessage -> IO IrcServer]
-internalEvents     = [joinChans, pong, trackChanges]
+internalEvents     = [joinChans, pong, trackChanges, handleSasl]
 internalNormEvents :: [IrcEvent]
 internalNormEvents = [Privmsg ctcpHandler]
 
@@ -75,6 +77,7 @@ data IrcConfig = IrcConfig
   , cSecure   :: Bool     -- ^ Use secure transport
   , cNick     :: String   -- ^ Nickname
   , cPass     :: Maybe String -- ^ Optional server password
+  , cSasl     :: Maybe SaslMechanism -- ^ sasl
   , cUsername :: String   -- ^ Username
   , cRealname :: String   -- ^ Realname
   , cChannels :: [String]   -- ^ List of channels to join on connect
@@ -95,6 +98,7 @@ data IrcServer = IrcServer
   , sSecure       :: Bool
   , sNickname     :: B.ByteString
   , sPassword     :: Maybe B.ByteString
+  , sSasl         :: Maybe SaslState
   , sUsername     :: B.ByteString
   , sRealname     :: B.ByteString
   , sChannels     :: [B.ByteString]
@@ -130,6 +134,13 @@ data IrcEvent =
   | RawMsg EventFunc  -- ^ This event gets called on every message received
   | Disconnect (MIrc -> IO ()) -- ^ This event gets called whenever the
                                     --   connection with the server is dropped
+
+data SaslState =
+    -- | Should always move from NotStarted to Running, never backwards
+    SaslNotStarted SaslMechanism
+    -- | Because messages are sent in multiple chunks, the bytestring is
+    -- the message (base-64) seen "so far", before the Await can be run
+  | SaslRunning B.ByteString SaslAwait
 
 instance Show IrcEvent where
   show (Privmsg _) = "IrcEvent - Privmsg"
@@ -245,13 +256,16 @@ toServer config conn cmdChan debug = do
   now <- getCurrentTime
 
   return $ IrcServer (B.pack $ cAddr config) (cPort config) (cSecure config)
-              (B.pack $ cNick config) (B.pack `fmap` cPass config) (B.pack $ cUsername config)
+              (B.pack $ cNick config) (B.pack `fmap` cPass config)
+              (SaslNotStarted `fmap` cSasl config) (B.pack $ cUsername config)
               (B.pack $ cRealname config) (map B.pack $ cChannels config)
               uniqueEvents (Just conn) Nothing Nothing cmdChan debug
-              (cCTCPVersion config) (cCTCPTime config) (cPingTimeoutInterval config) now
+              (cCTCPVersion config) (cCTCPTime config)
+              (cPingTimeoutInterval config) now
 
 greetServer :: IrcServer -> IO IrcServer
 greetServer server = do
+  when (isJust sasl) $ write server "CAP REQ :sasl"
   case mpass of
     Nothing -> return ()
     Just pass -> write server $ "PASS " `B.append` pass
@@ -265,6 +279,7 @@ greetServer server = do
         user = sUsername server
         real = sRealname server
         addr = sAddr server
+        sasl = sSasl server
 
 execCmdsLoop :: MIrc -> IO ()
 execCmdsLoop mIrc = do
@@ -305,13 +320,13 @@ listenLoop s = do
 
       -- Print the received line.
       debugWrite server1 $ (B.pack ">> ") `B.append` line
+      let parsed = parse line
 
       -- Call the internal events
-      newServ <- foldM (\sr f -> f sr (parse line)) server1 internalEvents
+      newServ <- foldM (\sr f -> f sr parsed) server1 internalEvents
 
       putMVar s newServ -- Put the MVar back.
 
-      let parsed = (parse line)
       -- Call the events
       callEvents s parsed
 
@@ -376,6 +391,55 @@ trackChanges server msg
   | otherwise = return server
 
   where code = mCode msg
+
+handleSasl :: IrcServer -> IrcMessage -> IO IrcServer
+handleSasl s0 msg = answerSasl =<< checkSasl =<< beginSasl s0
+  where
+    code = mCode msg
+    other = mOther msg
+    contents = mMsg msg
+    runSend server s = case s of
+      SaslSend mg nxt -> do
+        mapM_ (mapM_ (write server . ("AUTHENTICATE " `B.append`)) . encodeAuthMsg) mg
+        return server { sSasl = Just (SaslRunning B.empty nxt) }
+    beginSasl server = case (sasl, code, other) of
+        (Just (SaslNotStarted (SaslMechanism nm mc)), "CAP", Just ("ACK":_)) -> do
+          write server $ "AUTHENTICATE " `B.append` B.pack nm
+          return server { sSasl = Just (SaslRunning B.empty mc) }
+        _ -> return server
+      where sasl = sSasl server
+    checkSasl server = case sasl of
+        Just _
+          | code == "903" || code == "907" || code == "906" -> do
+              write server "CAP END"
+              return server { sSasl = Nothing }
+          | code == "904" -> do
+              debugWrite server "SASL Authentication Failed"
+              return server
+        _ -> return server
+      where sasl = sSasl server
+    answerSasl server = case sasl of
+        Just (SaslRunning soFar (SaslAwaitResp f))
+          | code == "AUTHENTICATE" ->
+              case decodeAuthMsg soFar contents of
+                Left waitMore -> return server
+                  { sSasl = Just (SaslRunning waitMore (SaslAwaitResp f)) }
+                Right Nothing -> do
+                  write server $ "AUTHENTICATE *"
+                  debugWrite server
+                    "SASL Authentication Aborted: AUTHENTICATE command over 400 bytes received"
+                  return server
+                Right (Just fullMsg) -> case f fullMsg of
+                  Left e  -> do
+                    write server $ "AUTHENTICATE *"
+                    debugWrite server $ "SASL Authentication Aborted: " <> B.pack e
+                    return server
+                  Right x -> runSend server x
+          | otherwise -> return server
+        -- this is handled by checkSasl
+        Just (SaslRunning _ SaslAwaitDone) -> return server
+        _ -> return server
+      where sasl      = sSasl server
 
 -- Internal normal events
 ctcpHandler :: EventFunc
@@ -559,6 +623,7 @@ mkDefaultConfig addr nick = IrcConfig
   , cSecure   = False
   , cNick     = nick
   , cPass     = Nothing
+  , cSasl     = Nothing
   , cUsername = "simpleirc"
   , cRealname = "SimpleIRC Bot"
   , cChannels = []
@@ -622,3 +687,4 @@ getFloodControlTimestamp mIrc = do
 setFloodControlTimestamp :: MIrc -> UTCTime -> IO ()
 setFloodControlTimestamp mIrc stamp =
   modifyMVar_ mIrc (\i -> return i { sFloodControlTimestamp = stamp })
+

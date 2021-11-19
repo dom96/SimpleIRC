@@ -26,6 +26,7 @@ Source-repository this
 Library
   Build-depends:
     base >= 4 && < 5,
+    base64,
     bytestring >= 0.9.1.7,
     network >= 2.2.1.5,
     connection >= 0.2.4,
@@ -36,6 +37,7 @@ Library
     Network.SimpleIRC
     Network.SimpleIRC.Core
     Network.SimpleIRC.Messages
+    Network.SimpleIRC.Sasl
   ghc-options:
       -Wall
 
